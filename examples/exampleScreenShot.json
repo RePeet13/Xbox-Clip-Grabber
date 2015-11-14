@@ -1,0 +1,48 @@
+{
+    "screenshotId": "d32df8c5-0db2-4aa6-bc34-9b260ad6beed",
+    "resolutionHeight": 1080,
+    "resolutionWidth": 1920,
+    "state": "Published",
+    "datePublished": "2015-10-08T21:18:40.7085109Z",
+    "dateTaken": "2015-10-08 21:18:25",
+    "lastModified": "2015-10-08 21:18:41",
+    "userCaption": "",
+    "type": "UserGenerated",
+    "scid": "37770100-f9ae-4b80-9dad-7c1d0ec14469",
+    "titleId": 247546985,
+    "rating": 0,
+    "ratingCount": 0,
+    "views": 0,
+    "titleData": "",
+    "systemProperties": "79fa61aa-2b3c-4ee0-b587-60fe1334a031;",
+    "savedByUser": false,
+    "achievementId": "",
+    "greatestMomentId": "",
+    "thumbnails": [
+        {
+            "uri": "http://screenshotscontent-t5002.xboxlive.com/0009000009b304e6-d32df8c5-0db2-4aa6-bc34-9b260ad6beed/Thumbnail_Small.PNG",
+            "fileSize": 103474,
+            "thumbnailType": "Small"
+        },
+        {
+            "uri": "http://screenshotscontent-t5002.xboxlive.com/0009000009b304e6-d32df8c5-0db2-4aa6-bc34-9b260ad6beed/Thumbnail_Large.PNG",
+            "fileSize": 437239,
+            "thumbnailType": "Large"
+        }
+    ],
+    "screenshotUris": [
+        {
+            "uri": "http://screenshotscontent-t5002.xboxlive.com/0009000009b304e6-d32df8c5-0db2-4aa6-bc34-9b260ad6beed/Screenshot-Original.png?sv=2014-02-14&sr=c&sig=uaQB198IwuVSLomYZOYnDnu%2B%2Bc6tcTxokeA6JO%2FSQ5M%3D&st=2015-11-13T17%3A45%3A38Z&se=2015-11-13T18%3A50%3A38Z&sp=r&__gda__=1447440638_ad3f776c931355d3f5f5fc3dd4fe9852",
+            "fileSize": 2566738,
+            "uriType": "Download",
+            "expiration": "2015-11-13 18:50:38"
+        }
+    ],
+    "xuid": 2533274953123046,
+    "screenshotName": "",
+    "titleName": "Destiny",
+    "screenshotLocale": "en-US",
+    "screenshotContentAttributes": "None",
+    "deviceType": "XboxOne",
+    "screenshotDetails": "https://xboxapi.com/v2/2533274953123046/screenshot-details/37770100-f9ae-4b80-9dad-7c1d0ec14469/d32df8c5-0db2-4aa6-bc34-9b260ad6beed"
+}

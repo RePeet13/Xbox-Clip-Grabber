@@ -1,0 +1,51 @@
+{
+    "gameClipId": "13162e37-3806-4a48-a5bc-17a5c93632e4",
+    "state": "Published",
+    "datePublished": "2015-11-13T05:04:03.8846373Z",
+    "dateRecorded": "2015-11-13 04:42:14",
+    "lastModified": "2015-11-13 05:04:04",
+    "userCaption": "",
+    "type": "UserGenerated",
+    "durationInSeconds": 25,
+    "scid": "37770100-f9ae-4b80-9dad-7c1d0ec14469",
+    "titleId": 247546985,
+    "rating": 0,
+    "ratingCount": 0,
+    "views": 0,
+    "titleData": "",
+    "systemProperties": "acf2b790-e601-4c5f-bddd-da457415bbfc;",
+    "savedByUser": false,
+    "achievementId": "",
+    "greatestMomentId": "",
+    "thumbnails": [
+        {
+            "uri": "http://gameclipscontent-t3002.xboxlive.com/0009000009b304e6-13162e37-3806-4a48-a5bc-17a5c93632e4-public/Thumbnail_Small.PNG",
+            "fileSize": 149421,
+            "thumbnailType": "Small"
+        },
+        {
+            "uri": "http://gameclipscontent-t3002.xboxlive.com/0009000009b304e6-13162e37-3806-4a48-a5bc-17a5c93632e4-public/Thumbnail_Large.PNG",
+            "fileSize": 490629,
+            "thumbnailType": "Large"
+        }
+    ],
+    "gameClipUris": [
+        {
+            "uri": "http://gameclipscontent-d3002.xboxlive.com/0009000009b304e6-13162e37-3806-4a48-a5bc-17a5c93632e4/GameClip-Original.MP4?sv=2014-02-14&sr=c&sig=KgLkh2xXGyw7BKw5Xx%2FkH%2BDkMHcK2vjOPNLvyN%2Fy3Rk%3D&st=2015-11-13T16%3A58%3A22Z&se=2015-11-13T18%3A03%3A22Z&sp=r&__gda__=1447437802_b58d647b83e693b01c3031f2523f8d1f",
+            "fileSize": 15488067,
+            "uriType": "Download",
+            "expiration": "2015-11-13 18:03:22"
+        }
+    ],
+    "xuid": 2533274953123046,
+    "clipName": "",
+    "titleName": "Destiny",
+    "gameClipLocale": "en-US",
+    "clipContentAttributes": "None",
+    "deviceType": "XboxOne",
+    "commentCount": 0,
+    "likeCount": 0,
+    "shareCount": 0,
+    "partialViews": 0,
+    "gameClipDetails": "https://xboxapi.com/v2/2533274953123046/game-clip-details/37770100-f9ae-4b80-9dad-7c1d0ec14469/13162e37-3806-4a48-a5bc-17a5c93632e4"
+}
