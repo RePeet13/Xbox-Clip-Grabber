@@ -1,4 +1,4 @@
-import argparse, errno, json, logging, os, pprint, sqlite3, urllib, urllib2
+import argparse, errno, json, logging, os, pprint, sqlite3, sys, urllib, urllib2
 
 xboxApiKey = '6b9f4356b93ddf78c4fb24f799da1f11b907bb21'
 xboxApiBase = 'https://xboxapi.com/v2/'
@@ -113,14 +113,58 @@ def addItemToDb(i, c):
     return i # TODO fill this out
 
 
+def downloadMissingData(inTables):
+    logging.info('Getting ready to download all missing data (clips/grabs)')
+
+    con = getDb()
+    c = con.cursor()
+
+    for t in inTables:
+        logging.info('Looking at database table: ' + t['name'])
+        selArr = [t['primaryCol']['colName'], 'titleName', 'deviceType', t['downloadCol'], 'datePublished']
+        s = "SELECT {sel} FROM {tn} WHERE ({cn} = NULL) OR ({cn} IS NULL)"\
+            .format(sel=SEP.join(selArr), tn=t['name'], cn='localDiskPath')
+        logging.debug('Statement is: \n\t' + s)
+        c.execute(s)
+
+        all_rows = c.fetchall()
+
+        for r in all_rows:
+            logging.debug(str(r))
+            d = os.path.join(getScriptPath(), basePath, r[1])
+            mkDirDashP(d)
+
+            ### Commenting out since I currently dont care about multiple devices (xboxone, etc)
+            # d = os.path.join(d, r[2])
+            # mkDirDashP(d)
+
+            cnt = 0
+            uris = json.loads(r[3])
+            for v in uris:
+                # TODO log this back to the DB (if success)
+                fn = r[4] + '_' + r[0][:7] + '_' + str(cnt)
+                # TODO parse uri for this instead of hardcode
+                if t['name'] is 'clips':
+                    fn = fn + '.mp4'
+                elif t['name'] is 'grabs':
+                    fn = fn + '.png'
+                downloadFile(v['uri'], os.path.join(d,fn))
+                cnt += 1
+
+    con.commit()
+    con.close()
+
+
+### Initially http://stackoverflow.com/a/22776/286994
+### Then http://blog.radevic.com/2012/07/python-download-url-to-file-with.html
 def downloadFile(url, file_name):
-    logging.info('Downloading item to: ' + file_name)
     req = getReq(url)
     u = urllib2.urlopen(req)
     f = open(file_name, 'wb')
     meta = u.info()
     file_size = int(meta.getheaders("Content-Length")[0])
-    print "Downloading: %s Bytes: %s" % (file_name, file_size)
+    logging.info('Downloading: {0} Bytes: {1} \n\tUrl: {2}'.format(file_name, file_size, url))
+    logging.debug('Download response info: \n\t' + str(u.info()))
 
     file_size_dl = 0
     block_sz = 8192
@@ -133,7 +177,7 @@ def downloadFile(url, file_name):
         f.write(buffer)
         status = r"%10d  [%3.2f%%]" % (file_size_dl, file_size_dl * 100. / file_size)
         status = status + chr(8)*(len(status)+1)
-        print status,
+        sys.stdout.write(status)
 
     f.close()
 
@@ -201,8 +245,6 @@ def checkDatabase(inTables, inIndexes):
                 # TODO add to missing table array
 
     # TODO also check indexes?
-
-
     con.commit()
     con.close()
 
@@ -299,6 +341,7 @@ def byteify(input):
     else:
         return input
 
+
 ### Schema ### 
 # TODO Move this to its own file
 TEXT = 'TEXT'
@@ -306,6 +349,7 @@ INTEGER = 'INTEGER'
 SEP = ', '
 
 clipTable = {'name' : 'clips',
+            'downloadCol' : 'gameClipUris', # This would need to match the column
             'primaryCol' : {
                 'colName' : 'gameClipId',
                 'colType' : TEXT,
@@ -439,6 +483,7 @@ clipTable = {'name' : 'clips',
 
 
 grabTable = {'name' : 'grabs',
+            'downloadCol' : 'screenshotUris', # This would need to match the column
             'primaryCol' : {
                 'colName' : "screenshotId",
                 'colType' : TEXT,
@@ -585,17 +630,18 @@ if __name__ == "__main__":
     
     # TODO decide on and adjust to match args and parsing
 
-    # parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser()
     # parser.add_argument('name', help='Name of the project (and folder) to create', nargs='?', default='_stop_')
     # parser.add_argument('-c', '--contributors', dest='contributors', help='Contributors to the project', nargs=3, action='append', metavar=('cName', 'cEmail', 'cRank'))
-    # parser.add_argument('-e', '--example', dest='example', help='Generate example folder', action='store_true')
+    parser.add_argument('-d', '--download-missing', dest='dl', help='Download missing files', action='store_true')
+    parser.add_argument('-c', '--check-new', dest='c', help='Download new info from xboxapi', action='store_true')
     # parser.add_argument('-i', '--info', dest='info', help='Very short description of the project')
     # parser.add_argument('-s', '--scm', dest='scm', help='Which source control management you would like initialized', choices=['git', 'None'])
     # parser.add_argument('-t', '--template', dest='template', help="Template name (also used as the name of the template's enclosing folder)", default='Generic')
 
     # parser.add_argument('-v', '--verbose', dest='verbosity', help='Increase verbosity (off/on/firehose)', action='count', default=0)
     # parser.add_argument('dirs', help='Directories to check for duplicates', nargs='+')
-    # args = parser.parse_args()
+    args = parser.parse_args()
     
     # ### Initialize Logging ###
     # if args.verbosity == 0:
@@ -610,7 +656,7 @@ if __name__ == "__main__":
         
     logging.basicConfig(level=l, format='%(asctime)s - %(levelname)s - %(message)s')
 
-    # logging.debug(str(args))
+    logging.debug(str(args))
 
     # dirs = massageInputDirs(args.dirs)
 
@@ -618,7 +664,11 @@ if __name__ == "__main__":
 
     checkDatabase(tables, indexes)
 
-    getData()
+    if args.c:
+        getData()
+
+    if args.dl:
+        downloadMissingData(tables)
 
     ### Reset working directory to original ###
     os.chdir(cwd)
