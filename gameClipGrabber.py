@@ -123,7 +123,7 @@ def downloadMissingData(inTables):
         logging.info('Looking at database table: ' + t['name'])
         selArr = [t['primaryCol']['colName'], 'titleName', 'deviceType', t['downloadCol'], 'datePublished']
         s = "SELECT {sel} FROM {tn} WHERE ({cn} = NULL) OR ({cn} IS NULL)"\
-            .format(sel=SEP.join(selArr), tn=t['name'], cn='localDiskPath')
+            .format(sel=SEP.join(selArr), tn=t['name'], cn='localDiskPath') # TODO this and below shouldnt be hardcoded really
         logging.debug('Statement is: \n\t' + s)
         c.execute(s)
 
@@ -140,16 +140,29 @@ def downloadMissingData(inTables):
 
             cnt = 0
             uris = json.loads(r[3])
+            downed = []
             for v in uris:
                 # TODO log this back to the DB (if success)
+                dateString = r[4][:19].replace(':','')
                 fn = r[4] + '_' + r[0][:7] + '_' + str(cnt)
                 # TODO parse uri for this instead of hardcode
                 if t['name'] is 'clips':
                     fn = fn + '.mp4'
                 elif t['name'] is 'grabs':
                     fn = fn + '.png'
-                downloadFile(v['uri'], os.path.join(d,fn))
+                fn = os.path.join(d,fn)
+                downloadFile(v['uri'], fn)
+
+                downed.append(fn)
                 cnt += 1
+
+            # Add back the paths to the db
+            logging.debug('Adding file paths back to db')
+            s = "UPDATE {tn} SET {c}=('{p}') WHERE {idf}=('{id}')"\
+                .format(tn=t['name'], c='localDiskPath', p=','.join(downed), \
+                    idf=t['primaryCol']['colName'], id=r[0])
+            logging.debug('Statement is: \n\t' + s)
+            c.execute(s)
 
     con.commit()
     con.close()
@@ -165,6 +178,9 @@ def downloadFile(url, file_name):
     file_size = int(meta.getheaders("Content-Length")[0])
     logging.info('Downloading: {0} Bytes: {1} \n\tUrl: {2}'.format(file_name, file_size, url))
     logging.debug('Download response info: \n\t' + str(u.info()))
+    arr = file_name.split('/')
+    shortfn = arr[-1]
+    game = arr[-2]
 
     file_size_dl = 0
     block_sz = 8192
@@ -175,7 +191,7 @@ def downloadFile(url, file_name):
 
         file_size_dl += len(buffer)
         f.write(buffer)
-        status = r"%10d  [%3.2f%%]" % (file_size_dl, file_size_dl * 100. / file_size)
+        status = r"%s/%s - %10d  [%3.2f%%]" % (game, shortfn, file_size_dl, file_size_dl * 100. / file_size)
         status = status + chr(8)*(len(status)+1)
         sys.stdout.write(status)
 
@@ -251,7 +267,7 @@ def checkDatabase(inTables, inIndexes):
     # TODO remove this hack with an actual check that doesn't blow away the db
     src = os.path.join(getDbPath(), dbName)
     dest = os.path.join(getDbPath(), dbName + '_1')
-    logging.debug('Backing up db from: ' + src)
+    logging.debug('Backing up db from: \n\t' + src)
     logging.debug('To: \n\t' + dest)
     os.rename(src, dest)
 
