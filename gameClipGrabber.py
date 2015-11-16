@@ -19,18 +19,21 @@ def getScriptPath():
     return os.path.dirname(os.path.realpath(__file__))
 
 
-def getData():
+def getData(xboxId):
     logging.info('Getting all data')
     # TODO decide what is going to be returned by below functions (stats on what was added, failed, etc)
+
+    checkForXboxId(xboxId)
+
     result = []
-    result.append(getClips())
-    result.append(getGrabs())
+    result.append(getClips(xboxId))
+    result.append(getGrabs(xboxId))
     return result
 
 
-def getClips():
+def getClips(xboxId):
     logging.info('Getting all the clips')
-    url = xboxApiBase + xboxUserId + '/' + clipsUrl
+    url = xboxApiBase + xboxId + '/' + clipsUrl
     req = getReq(url)
     response = urllib2.urlopen(req)
     data = json.loads(response.read()) # TODO verify this
@@ -40,10 +43,10 @@ def getClips():
     return result # TODO change this to be more helpful (success true/false, error, etc)
 
 
-def getGrabs():
+def getGrabs(xboxId):
     logging.info('Getting all the grabs')
 
-    url = xboxApiBase + xboxUserId + '/' + grabsUrl
+    url = xboxApiBase + xboxId + '/' + grabsUrl
     req = getReq(url)
     response = urllib2.urlopen(req)
     data = json.loads(response.read())
@@ -51,6 +54,11 @@ def getGrabs():
     result = addListToDb(data)
 
     return result # TODO change this to be more helpful (success true/false, error, etc)
+
+
+def checkForXboxId(xuid):
+    logging.info('Checking for local details for xuid: ' + xuid)
+    # TODO fill this out
 
 
 ### Wrapper to add a list of items to the db
@@ -121,7 +129,7 @@ def downloadMissingData(inTables):
 
     for t in inTables:
         logging.info('Looking at database table: ' + t['name'])
-        selArr = [t['primaryCol']['colName'], 'titleName', 'deviceType', t['downloadCol'], 'datePublished']
+        selArr = [t['primaryCol']['colName'], 'titleName', 'deviceType', t[downloadColName], 'datePublished', 'xuid']
         s = "SELECT {sel} FROM {tn} WHERE ({cn} = NULL) OR ({cn} IS NULL)"\
             .format(sel=SEP.join(selArr), tn=t['name'], cn='localDiskPath') # TODO this and below shouldnt be hardcoded really
         logging.debug('Statement is: \n\t' + s)
@@ -207,7 +215,9 @@ def getReq(url):
 
 ### Check the schema of the database and open a new one if necessary
 ### http://sebastianraschka.com/Articles/2014_sqlite_in_python_tutorial.html (this method and below)
-def checkDatabase(inTables, inIndexes):
+# def checkDatabase(inTables, inIndexes):
+def checkDatabase(inTables):
+
     logging.debug('Checking db consistency')
     con = getDb()
     c = con.cursor()
@@ -237,7 +247,7 @@ def checkDatabase(inTables, inIndexes):
 
         # collect names in a list
         names = [tup[1] for tup in tups]
-        logging.debug('Column Names(?): \n\t' + names)
+        logging.debug('Column Names(?): \n\t' + str(names))
 
         missingCols = []
         for col in t['columns']:
@@ -271,13 +281,15 @@ def checkDatabase(inTables, inIndexes):
     logging.debug('To: \n\t' + dest)
     os.rename(src, dest)
 
-    createDatabase(missingTables, inIndexes)
+    # createDatabase(missingTables, inIndexes)
+    createDatabase(missingTables)
 
 
 # TODO could fix some of the checking problems by passing in a list of tables and a list of indexes here (that way we could build lists of missing tables to pass in)
-def createDatabase(inTables, inIndexes):
+# def createDatabase(inTables, inIndexes):
+def createDatabase(inTables):
     logging.info('Creating database with tables: ' + str([x['name'] for x in inTables]))
-    logging.info('Creating database with indexes: ' + str([x['name'] for x in inIndexes]))
+    # logging.info('Creating database with indexes: ' + str([x['name'] for x in inIndexes]))
     con = getDb()
     c = con.cursor()
 
@@ -286,9 +298,15 @@ def createDatabase(inTables, inIndexes):
     ### Create the Tables
     for t in tables:
         logging.info('Creating database table: ' + t['name'])
-        s = 'CREATE TABLE {tn} ({pk} {ft})'\
+        nn = ''
+        if 'notNullCols' in t:
+            nn = SEP
+            nn = nn + SEP.join([(x['colName'] + ' ' + x['colType'] + ' ' + x['modify']) for x in t['notNullCols']])
+            # for nnCol in t['notNullCols']:
+
+        s = 'CREATE TABLE {tn} ({pk} {ft}{notn})'\
             .format(tn=t['name'], pk=t['primaryCol']['colName'], \
-                ft=t['primaryCol']['colType'] + ' ' + t['primaryCol']['modify'])
+                ft=t['primaryCol']['colType'] + ' ' + t['primaryCol']['modify'], notn=nn)
         logging.debug('Statement is: \n\t' + s)
         c.execute(s)
 
@@ -301,12 +319,12 @@ def createDatabase(inTables, inIndexes):
             c.execute(s)
 
     ### Create the Indexes
-    logging.info('Adding indexes now')
-    for i in indexes:
-        s = 'CREATE INDEX {idx} ON {tn}{cols} WHERE {w}'\
-            .format(idx=i['name'], tn=i['table'], cols=i['columns'], w=i['where'])
-        logging.debug('Statement is: \n\t' + s)
-        c.execute(s)
+    # logging.info('Adding indexes now')
+    # for i in indexes:
+    #     s = 'CREATE INDEX {idx} ON {tn}{cols} WHERE {w}'\
+    #         .format(idx=i['name'], tn=i['table'], cols=i['columns'], w=i['where'])
+    #     logging.debug('Statement is: \n\t' + s)
+    #     c.execute(s) 
 
     con.commit()
     con.close()
@@ -364,134 +382,142 @@ TEXT = 'TEXT'
 INTEGER = 'INTEGER'
 SEP = ', '
 
+# downloadColName = 'downloadCol'
+# localDiskPathColName = 'localDiskPath'
+# gameClipUrisColName = 'gameClipUris'
+# screenshotUrisColName = 'screenshotUris'
+
 clipTable = {'name' : 'clips',
-            'downloadCol' : 'gameClipUris', # This would need to match the column
+            # downloadColName : gameClipUrisColName,
+            'downloadCol' : 'gameClipUris',
             'primaryCol' : {
                 'colName' : 'gameClipId',
                 'colType' : TEXT,
                 'modify' : 'PRIMARY KEY'},
             'columns' : [{
-                'colName' : "state",
+                'colName' : 'state',
                 'colType' : TEXT,
                 'modify' : ''
             },{
-                'colName' : "datePublished",
+                'colName' : 'datePublished',
                 'colType' : TEXT,
                 'modify' : ''
             },{
-                'colName' : "dateRecorded",
+                'colName' : 'dateRecorded',
                 'colType' : TEXT,
                 'modify' : ''
             },{
-                'colName' : "lastModified",
+                'colName' : 'lastModified',
                 'colType' : TEXT,
                 'modify' : ''
             },{
-                'colName' : "userCaption",
+                'colName' : 'userCaption',
                 'colType' : TEXT,
                 'modify' : ''
             },{
-                'colName' : "type",
+                'colName' : 'type',
                 'colType' : TEXT,
                 'modify' : ''
             },{
-                'colName' : "durationInSeconds",
+                'colName' : 'durationInSeconds',
                 'colType' : INTEGER,
                 'modify' : ''
             },{
-                'colName' : "scid",
+                'colName' : 'scid',
                 'colType' : TEXT,
                 'modify' : ''
             },{
-                'colName' : "titleId",
+                'colName' : 'titleId',
                 'colType' : INTEGER,
                 'modify' : ''
             },{
-                'colName' : "rating",
+                'colName' : 'rating',
                 'colType' : INTEGER,
                 'modify' : ''
             },{
-                'colName' : "ratingCount",
+                'colName' : 'ratingCount',
                 'colType' : INTEGER,
                 'modify' : ''
             },{
-                'colName' : "views",
+                'colName' : 'views',
                 'colType' : INTEGER,
                 'modify' : ''
             },{
-                'colName' : "titleData",
+                'colName' : 'titleData',
                 'colType' : TEXT,
                 'modify' : ''
             },{
-                'colName' : "systemProperties",
+                'colName' : 'systemProperties',
                 'colType' : TEXT,
                 'modify' : ''
             },{
-                'colName' : "savedByUser",
+                'colName' : 'savedByUser',
                 'colType' : INTEGER,
                 'modify' : ''
             },{
-                'colName' : "achievementId",
+                'colName' : 'achievementId',
                 'colType' : TEXT,
                 'modify' : ''
             },{
-                'colName' : "greatestMomentId",
+                'colName' : 'greatestMomentId',
                 'colType' : TEXT,
                 'modify' : ''
             },{
-                'colName' : "thumbnails",
+                'colName' : 'thumbnails',
                 'colType' : TEXT,
                 'modify' : ''
             },{
-                'colName' : "gameClipUris",
+                # 'colName' : gameClipUrisColName,
+                'colName' : 'gameClipUris',
                 'colType' : TEXT,
                 'modify' : ''
             },{
-                'colName' : "xuid",
+                'colName' : 'xuid',
                 'colType' : TEXT,
                 'modify' : ''
             },{
-                'colName' : "clipName",
+                'colName' : 'clipName',
                 'colType' : TEXT,
                 'modify' : ''
             },{
-                'colName' : "titleName",
+                'colName' : 'titleName',
                 'colType' : TEXT,
                 'modify' : ''
             },{
-                'colName' : "gameClipLocale",
+                'colName' : 'gameClipLocale',
                 'colType' : TEXT,
                 'modify' : ''
             },{
-                'colName' : "clipContentAttributes",
+                'colName' : 'clipContentAttributes',
                 'colType' : TEXT,
                 'modify' : ''
             },{
-                'colName' : "deviceType",
+                'colName' : 'deviceType',
                 'colType' : TEXT,
                 'modify' : ''
             },{
-                'colName' : "commentCount",
+                'colName' : 'commentCount',
                 'colType' : INTEGER,
                 'modify' : ''
             },{
-                'colName' : "likeCount",
+                'colName' : 'likeCount',
                 'colType' : INTEGER,
                 'modify' : ''
             },{
-                'colName' : "shareCount",
+                'colName' : 'shareCount',
                 'colType' : INTEGER,
                 'modify' : ''
             },{
-                'colName' : "partialViews",
+                'colName' : 'partialViews',
                 'colType' : INTEGER,
                 'modify' : ''
             },{
-                'colName' : "gameClipDetails",
+                'colName' : 'gameClipDetails',
                 'colType' : TEXT,
                 'modify' : ''
             },{
-                'colName' : "localDiskPath",
+                # 'colName' : localDiskPathColName,
+                'colName' : 'localDiskPath',
                 'colType' : TEXT,
                 'modify' : 'DEFAULT NULL'
             }]
@@ -499,143 +525,169 @@ clipTable = {'name' : 'clips',
 
 
 grabTable = {'name' : 'grabs',
-            'downloadCol' : 'screenshotUris', # This would need to match the column
+            # downloadColName : screenshotUrisColName,
+            'downloadCol' : 'screenshotUris',
             'primaryCol' : {
-                'colName' : "screenshotId",
+                'colName' : 'screenshotId',
                 'colType' : TEXT,
                 'modify' : 'PRIMARY KEY'},
             'columns' : [{
-                'colName' : "resolutionHeight",
+                'colName' : 'resolutionHeight',
                 'colType' : INTEGER,
                 'modify' : ''
             },{
-                'colName' : "resolutionWidth",
+                'colName' : 'resolutionWidth',
                 'colType' : INTEGER,
                 'modify' : ''
             },{
-                'colName' : "state",
+                'colName' : 'state',
                 'colType' : TEXT,
                 'modify' : ''
             },{
-                'colName' : "datePublished",
+                'colName' : 'datePublished',
                 'colType' : TEXT,
                 'modify' : ''
             },{
-                'colName' : "dateTaken",
+                'colName' : 'dateTaken',
                 'colType' : TEXT,
                 'modify' : ''
             },{
-                'colName' : "lastModified",
+                'colName' : 'lastModified',
                 'colType' : TEXT,
                 'modify' : ''
             },{
-                'colName' : "userCaption",
+                'colName' : 'userCaption',
                 'colType' : TEXT,
                 'modify' : ''
             },{
-                'colName' : "gameClipDetails",
+                'colName' : 'gameClipDetails',
                 'colType' : TEXT,
                 'modify' : ''
             },{
-                'colName' : "type",
+                'colName' : 'type',
                 'colType' : TEXT,
                 'modify' : ''
             },{
-                'colName' : "scid",
+                'colName' : 'scid',
                 'colType' : TEXT,
                 'modify' : ''
             },{
-                'colName' : "titleId",
+                'colName' : 'titleId',
                 'colType' : INTEGER,
                 'modify' : ''
             },{
-                'colName' : "rating",
+                'colName' : 'rating',
                 'colType' : INTEGER,
                 'modify' : ''
             },{
-                'colName' : "ratingCount",
+                'colName' : 'ratingCount',
                 'colType' : INTEGER,
                 'modify' : ''
             },{
-                'colName' : "views",
+                'colName' : 'views',
                 'colType' : INTEGER,
                 'modify' : ''
             },{
-                'colName' : "titleData",
+                'colName' : 'titleData',
                 'colType' : TEXT,
                 'modify' : ''
             },{
-                'colName' : "systemProperties",
+                'colName' : 'systemProperties',
                 'colType' : TEXT,
                 'modify' : ''
             },{
-                'colName' : "savedByUser",
+                'colName' : 'savedByUser',
                 'colType' : INTEGER,
                 'modify' : ''
             },{
-                'colName' : "achievementId",
+                'colName' : 'achievementId',
                 'colType' : TEXT,
                 'modify' : ''
             },{
-                'colName' : "greatestMomentId",
+                'colName' : 'greatestMomentId',
                 'colType' : TEXT,
                 'modify' : ''
             },{
-                'colName' : "thumbnails",
+                'colName' : 'thumbnails',
                 'colType' : TEXT,
                 'modify' : ''
             },{
-                'colName' : "screenshotUris",
+                # 'colName' : screenshotUrisColName,
+                'colName' : 'screenshotUris',
                 'colType' : TEXT,
                 'modify' : ''
             },{
-                'colName' : "xuid",
+                'colName' : 'xuid',
                 'colType' : TEXT,
                 'modify' : ''
             },{
-                'colName' : "screenshotName",
+                'colName' : 'screenshotName',
                 'colType' : TEXT,
                 'modify' : ''
             },{
-                'colName' : "screenshotLocale",
+                'colName' : 'screenshotLocale',
                 'colType' : TEXT,
                 'modify' : ''
             },{
-                'colName' : "screenshotContentAttributes",
+                'colName' : 'screenshotContentAttributes',
                 'colType' : TEXT,
                 'modify' : ''
             },{
-                'colName' : "deviceType",
+                'colName' : 'deviceType',
                 'colType' : TEXT,
                 'modify' : ''
             },{
-                'colName' : "screenshotDetails",
+                'colName' : 'screenshotDetails',
                 'colType' : TEXT,
                 'modify' : ''
             },{
-                'colName' : "titleName",
+                'colName' : 'titleName',
                 'colType' : TEXT,
                 'modify' : ''
             },{
-                'colName' : "localDiskPath",
+                # 'colName' : localDiskPathColName,
+                'colName' : 'localDiskPath',
                 'colType' : TEXT,
                 'modify' : 'DEFAULT NULL'
             }]
 }
 
+
+accountTable = {'name' : 'accounts',
+            'primaryCol' : {
+                'colName' : 'xuid',
+                'colType' : TEXT,
+                'modify' : 'PRIMARY KEY'},
+            'notNullCols' : [{
+                'colName' : 'gamertag',
+                'colType' : TEXT,
+                'modify' : 'NOT NULL'
+            }],
+            'columns' : [{
+                'colName' : 'firstname',
+                'colType' : TEXT,
+                'modify' : ''
+            },{
+                'colName' : 'lastname',
+                'colType' : TEXT,
+                'modify' : ''
+            }]
+}
+
+
 tables = [clipTable, grabTable]
 
-pathFinderClipIndex = {'name': 'path_finder_clips',
-                    'table' : clipTable['name'],
-                    'columns' : '(gameClipId, localDiskPath)',
-                    'where' : 'localDiskPath IS NULL'}
+# pathFinderClipIndex = {'name': 'path_finder_clips',
+#                     'table' : clipTable['name'],
+#                     'columns' : '(gameClipId, localDiskPath)',
+#                     'where' : 'localDiskPath IS NULL'}
 
-pathFinderGrabIndex = {'name': 'path_finder_grabs',
-                    'table' : grabTable['name'],
-                    'columns' : '(screenshotId, localDiskPath)',
-                    'where' : 'localDiskPath IS NULL'}
+# pathFinderGrabIndex = {'name': 'path_finder_grabs',
+#                     'table' : grabTable['name'],
+#                     'columns' : '(screenshotId, localDiskPath)',
+#                     'where' : 'localDiskPath IS NULL'}
 
-indexes = [pathFinderClipIndex, pathFinderGrabIndex]
+# indexes = [pathFinderClipIndex, pathFinderGrabIndex]
 
 
 ### Respond to call from command line ###
@@ -651,6 +703,7 @@ if __name__ == "__main__":
     # parser.add_argument('-c', '--contributors', dest='contributors', help='Contributors to the project', nargs=3, action='append', metavar=('cName', 'cEmail', 'cRank'))
     parser.add_argument('-d', '--download-missing', dest='dl', help='Download missing files', action='store_true')
     parser.add_argument('-c', '--check-new', dest='c', help='Download new info from xboxapi', action='store_true')
+    parser.add_argument('-u', '--user', dest='u', help='Designate user(s) to get data for', action='append')
     # parser.add_argument('-i', '--info', dest='info', help='Very short description of the project')
     # parser.add_argument('-s', '--scm', dest='scm', help='Which source control management you would like initialized', choices=['git', 'None'])
     # parser.add_argument('-t', '--template', dest='template', help="Template name (also used as the name of the template's enclosing folder)", default='Generic')
@@ -678,10 +731,17 @@ if __name__ == "__main__":
 
     # checkForDupes(dirs)
 
-    checkDatabase(tables, indexes)
+    ts = tables
+    ts.append(accountTable)
+    # checkDatabase(ts, indexes)
+    checkDatabase(ts)
 
     if args.c:
-        getData()
+        if args.u is not None and len(args.u) > 0:
+            for u in args.u:
+                getData(u)
+        else:
+            getData(xboxUserId)
 
     if args.dl:
         downloadMissingData(tables)
