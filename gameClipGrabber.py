@@ -76,31 +76,56 @@ def checkForXboxId(xuid):
 
     if not id_exists:
         logging.debug('Account not found, attempting population')
-        addAccountDetails(xuid)
+        addAccountDetails(getInfosFromXuids([xuid]))
 
 
-def addAccountDetails(xid):
-    # TODO play with other endpoints (like profile or gamercard are useful)
-
-    logging.info('Getting details for user id: ' + xid)
-    url = xboxApiBase + getGamerTagUrl + xid
-
-    # url = xboxApiBase + getXuidUrl + 'BearBiever'
-    req = getReq(url)
-    response = urllib2.urlopen(req)
-    # data = json.loads(response.read())
-    data = response.read()
-    logging.debug('Gamertag returned: \n\t' + str(data))
-
+def addAccountDetails(infos):
+    # TODO play with other endpoints (like profile or gamercard might be useful)
     con = getDb()
     c = con.cursor()
-    s = "INSERT OR IGNORE INTO {tn} ({idf}, {cn}) VALUES ({idv}, '{cnv}')".\
-        format(tn=accountTable['name'], idf=accountTable['primaryCol']['colName'], cn='gamertag',\
-            idv=xid, cnv=data)
-    logging.debug('Statement is: \n\t' + s)
-    c.execute(s)
+    for i in infos:
+        logging.debug('Attempting add of account gamertag: ' + i['gamertag'])
+        s = "INSERT OR IGNORE INTO {tn} ({idf}, {cn}) VALUES ({idv}, '{cnv}')".\
+            format(tn=accountTable['name'], idf=accountTable['primaryCol']['colName'], cn='gamertag',\
+                idv=i['xuid'], cnv=i['gamertag'])
+        logging.debug('Statement is: \n\t' + s)
+        c.execute(s)
     con.commit()
     con.close()
+
+
+def getInfosFromXuids(xids):
+    logging.info('Getting gamertags from xuids')
+# TODO consider using named tuples for 'infos'
+    gts = []
+    for xid in xids:
+        url = xboxApiBase + getGamerTagUrl + xid
+        req = getReq(url)
+        response = urllib2.urlopen(req)
+        gts.append({
+            'xuid' : xid,
+            'gamertag' : response.read()
+            })
+            # TODO have some validation around this, maybe check http code
+
+    return gts
+
+
+def getInfosFromGamertags(gts):
+    logging.info('Getting xuids from gamertags')
+
+    xuids = []
+    for g in gts:
+        url = xboxApiBase + getXuidUrl + g
+        req = getReq(url)
+        response = urllib2.urlopen(req)
+        xuids.append({
+            'xuid' : response.read(),
+            'gamertag' : g
+            }) # TODO have some validation around this, maybe check http code
+
+    return xuids
+
 
 ### Wrapper to add a list of items to the db
 def addListToDb(l):
@@ -194,7 +219,7 @@ def downloadMissingData(inTables):
             mkDirDashP(d)
 
             ### Next layer is game
-            d = os.path.join(getScriptPath(), basePath, r[1])
+            d = os.path.join(d, r[1])
             mkDirDashP(d)
 
             ### Next layer is platform
@@ -362,7 +387,6 @@ def createDatabase(inTables):
         if 'notNullCols' in t:
             nn = SEP
             nn = nn + SEP.join([(x['colName'] + ' ' + x['colType'] + ' ' + x['modify']) for x in t['notNullCols']])
-            # for nnCol in t['notNullCols']:
 
         s = 'CREATE TABLE {tn} ({pk} {ft}{notn})'\
             .format(tn=t['name'], pk=t['primaryCol']['colName'], \
@@ -763,7 +787,8 @@ if __name__ == "__main__":
     # parser.add_argument('-c', '--contributors', dest='contributors', help='Contributors to the project', nargs=3, action='append', metavar=('cName', 'cEmail', 'cRank'))
     parser.add_argument('-d', '--download-missing', dest='dl', help='Download missing files', action='store_true')
     parser.add_argument('-c', '--check-new', dest='c', help='Download new info from xboxapi', action='store_true')
-    parser.add_argument('-u', '--user', dest='u', help='Designate user(s) to get data for', action='append')
+    parser.add_argument('-u', '--user', dest='u', help='Designate xboxuserid(s) to get data for', action='append')
+    parser.add_argument('-g', '--gamertag', dest='g', help='Designate gamertag(s) to get data for', action='append')
     # parser.add_argument('-i', '--info', dest='info', help='Very short description of the project')
     # parser.add_argument('-s', '--scm', dest='scm', help='Which source control management you would like initialized', choices=['git', 'None'])
     # parser.add_argument('-t', '--template', dest='template', help="Template name (also used as the name of the template's enclosing folder)", default='Generic')
@@ -797,6 +822,13 @@ if __name__ == "__main__":
     checkDatabase(ts)
 
     if args.c:
+        ### GamerTags
+        if args.g is not None and len(args.g) > 0:
+            xids = getInfosFromGamertags(args.g)
+            addAccountDetails(xids)
+            for x in xids:
+                getData(x['xuid'])
+        ### XboxUserIds
         if args.u is not None and len(args.u) > 0:
             for u in args.u:
                 getData(u)
