@@ -197,7 +197,7 @@ def downloadMissingData(inTables):
     for t in inTables:
         logging.info('Looking at database table: ' + t['name'])
         logging.debug('Grabbing candidates')
-        selArr = [t['primaryCol']['colName'], 'titleName', 'deviceType', t[downloadColName], 'datePublished', 'xuid']
+        selArr = [t['primaryCol']['colName'], 'titleName', 'deviceType', t['downloadCol'], 'datePublished', 'xuid']
         s = "SELECT {sel} FROM {tn} WHERE ({cn} = NULL) OR ({cn} IS NULL)"\
             .format(sel=SEP.join(selArr), tn=t['name'], cn='localDiskPath') # TODO this and below shouldnt be hardcoded really
         logging.debug('Statement is: \n\t' + s)
@@ -205,6 +205,7 @@ def downloadMissingData(inTables):
 
         all_rows = c.fetchall()
 
+        # TODO add decorator for tqdm here
         for r in all_rows:
             logging.debug('Getting Account details')
             s = "SELECT {gt} FROM {at} WHERE {xidn}={xid}"\
@@ -215,7 +216,7 @@ def downloadMissingData(inTables):
 
             gt = c.fetchone()
             ### Top layer is gamer tag
-            d = os.path.join(getScriptPath(), basePath, r[0])
+            d = os.path.join(getScriptPath(), basePath, gt[0])
             mkDirDashP(d)
 
             ### Next layer is game
