@@ -63,9 +63,7 @@ def checkForXboxId(xuid):
     c = con.cursor()
 
     logging.info('Checking for local details for xuid: ' + xuid)
-    # TODO fill this out (check if exists in db)
 
-    logging.debug('Checking Account details')
     s = "SELECT {gt} FROM {at} WHERE {xidn}={xid}"\
         .format(gt='gamertag', at=accountTable['name'], \
             xidn=accountTable['primaryCol']['colName'], xid=xuid)
@@ -106,7 +104,7 @@ def addAccountDetails(xid):
 
 ### Wrapper to add a list of items to the db
 def addListToDb(l):
-    logging.debug('Adding list to database')
+    logging.info('Adding list to database')
     con = getDb()
     c = con.cursor()
 
@@ -124,14 +122,19 @@ def addItemToDb(i, c):
     t = ''
     if clipTable['primaryCol']['colName'] in i:
         t = clipTable['name']
+        n = clipTable['primaryCol']['colName'] + ' : ' + i[clipTable['primaryCol']['colName']]
     elif grabTable['primaryCol']['colName'] in i:
         t = grabTable['name']
+        n = grabTable['primaryCol']['colName'] + ' : ' + i[grabTable['primaryCol']['colName']]
+
+
+    logging.info('Processing item: ' + n)
 
     cols = []
     vals = []
     skipped = []
 
-    logging.debug(i)
+    # logging.debug(i)
 
     for col in i:
         if not str(i[col]):
@@ -150,14 +153,10 @@ def addItemToDb(i, c):
 
     try:
         s = "INSERT OR IGNORE INTO {tn} ({c}) VALUES ({v})".format(tn=t, c=SEP.join(cols), v=SEP.join(vals))
-        logging.debug('Statement is: \n\t' + s)
+        # logging.debug('Statement is: \n\t' + s)
         c.execute(s)
         # TODO what does it return if ignored? does the last key inserted help here?
         # TODO add logic here (after we know it was successful/unique) to download the video and store it
-        # TODO have a function that iterates over the table for empty file paths (download failed) and retries
-        # Can add index to filepaths? non null / empty?
-        # TODO add fields to grab and clip tables for local media file path
-
     except sqlite3.IntegrityError:
         logging.warning('ERROR: Something happened - Integrity Error - Statement: \n\t'.format(s))
 
@@ -189,11 +188,16 @@ def downloadMissingData(inTables):
             logging.debug('Statement is: \n\t' + s)
             c.execute(s)
 
+            gt = c.fetchone()
+            ### Top layer is gamer tag
+            d = os.path.join(getScriptPath(), basePath, r[0])
+            mkDirDashP(d)
 
-
+            ### Next layer is game
             d = os.path.join(getScriptPath(), basePath, r[1])
             mkDirDashP(d)
 
+            ### Next layer is platform
             ### Commenting out since I currently dont care about multiple devices (xboxone, etc)
             # d = os.path.join(d, r[2])
             # mkDirDashP(d)
@@ -270,36 +274,40 @@ def getReq(url):
 # def checkDatabase(inTables, inIndexes):
 def checkDatabase(inTables):
 
-    logging.debug('Checking db consistency')
+    logging.info('Checking db consistency')
+
+    # TODO check if database actually exists at all?
+
     con = getDb()
     c = con.cursor()
 
     missingTables = []
 
     for t in inTables:
-        # c.execute('SELECT {tn} FROM sqlite_master WHERE type = \'table\''.format(tn=t['name']))
-        # if len(c.fetchall()) != 1:
-        #     # Table is not in the db
-        #     # TODO track missing table
-        #     continue
+        logging.debug('Looking at table: ' + t['name'])
+        s = 'SELECT name FROM sqlite_master WHERE type = \'table\' AND name=\'{tn}\''\
+            .format(tn=t['name'])
+        logging.debug('Statement is: \n\t' + s)
+        c.execute(s)
+        table_exists = c.fetchone()
+        if not table_exists:
+            # Table is not in the db
+            logging.info('Table was missing: ' + t['name'])
+            missingTables.append(t)
+            continue
 
-        # TODO check if database actually exists at all?
 
         # Retrieve column information
         # Every column will be represented by a tuple with the following attributes:
         # (id, name, type, notnull, default_value, primary_key)
-        logging.debug('Looking at table: ' + t['name'])
-        c.execute('PRAGMA TABLE_INFO({})'.format(t['name']))
+        logging.debug('Checking columns in table: ' + t['name'])
+        s = 'PRAGMA TABLE_INFO({})'.format(t['name'])
+        c.execute(s)
         tups = c.fetchall()
-
-        if len(tups) != 1:
-            logging.debug('There appear to be no tables of that name: \n\t' + str(tups))
-            missingTables.append(t)
-            continue
 
         # collect names in a list
         names = [tup[1] for tup in tups]
-        logging.debug('Column Names(?): \n\t' + str(names))
+        # logging.debug('Column Names(?): \n\t' + str(names))
 
         missingCols = []
         for col in t['columns']:
@@ -327,11 +335,11 @@ def checkDatabase(inTables):
     con.close()
 
     # TODO remove this hack with an actual check that doesn't blow away the db
-    src = os.path.join(getDbPath(), dbName)
-    dest = os.path.join(getDbPath(), dbName + '_1')
-    logging.debug('Backing up db from: \n\t' + src)
-    logging.debug('To: \n\t' + dest)
-    os.rename(src, dest)
+    # src = os.path.join(getDbPath(), dbName)
+    # dest = os.path.join(getDbPath(), dbName + '_1')
+    # logging.debug('Backing up db from: \n\t' + src)
+    # logging.debug('To: \n\t' + dest)
+    # os.rename(src, dest)
 
     # createDatabase(missingTables, inIndexes)
     createDatabase(missingTables)
@@ -348,7 +356,7 @@ def createDatabase(inTables):
     # TODO If excited, add verification here that tables and indexes are formatted properly
 
     ### Create the Tables
-    for t in tables:
+    for t in inTables:
         logging.info('Creating database table: ' + t['name'])
         nn = ''
         if 'notNullCols' in t:
@@ -372,7 +380,7 @@ def createDatabase(inTables):
 
     ### Create the Indexes
     # logging.info('Adding indexes now')
-    # for i in indexes:
+    # for i in inIndexes:
     #     s = 'CREATE INDEX {idx} ON {tn}{cols} WHERE {w}'\
     #         .format(idx=i['name'], tn=i['table'], cols=i['columns'], w=i['where'])
     #     logging.debug('Statement is: \n\t' + s)
