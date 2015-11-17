@@ -247,7 +247,7 @@ def downloadMissingData(inTables, maxNum=float("inf")):
                     continue
                 # TODO log this back to the DB (if success)
                 dateString = r[4][:19].replace(':','')
-                fn = r[4] + '_' + r[0][:7] + '_' + str(cnt)
+                fn = dateString + '_' + r[0][:7] + '_' + str(cnt)
                 # TODO parse uri for this instead of hardcode
                 if t['name'] is 'clips':
                     fn = fn + '.mp4'
