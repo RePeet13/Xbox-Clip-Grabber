@@ -99,6 +99,7 @@ def addAccountDetails(xid):
     s = "INSERT OR IGNORE INTO {tn} ({idf}, {cn}) VALUES ({idv}, '{cnv}')".\
         format(tn=accountTable['name'], idf=accountTable['primaryCol']['colName'], cn='gamertag',\
             idv=xid, cnv=data)
+    logging.debug('Statement is: \n\t' + s)
     c.execute(s)
     con.commit()
     con.close()
