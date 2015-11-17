@@ -304,6 +304,7 @@ def downloadFile(url, file_name):
             sys.stdout.write(status)
 
         f.close()
+        sys.stdout.write('\n')
         logging.debug('Download Success')
         return True
     except urllib2.HTTPError:
