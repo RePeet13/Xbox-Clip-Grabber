@@ -85,9 +85,9 @@ def addAccountDetails(infos):
     c = con.cursor()
     for i in infos:
         logging.debug('Attempting add of account gamertag: ' + i['gamertag'])
-        s = "INSERT OR IGNORE INTO {tn} ({idf}, {cn}) VALUES ({idv}, '{cnv}')".\
-            format(tn=accountTable['name'], idf=accountTable['primaryCol']['colName'], cn='gamertag',\
-                idv=i['xuid'], cnv=i['gamertag'])
+        s = "INSERT OR IGNORE INTO {tn} ({idf}, {gt}, {gtc}) VALUES ({idv}, '{gtv}', '{gtcv}')".\
+            format(tn=accountTable['name'], idf=accountTable['primaryCol']['colName'], gt='gamertag',\
+                gtc='gamertagcompare', idv=i['xuid'], gtv=i['gamertag'], gtcv=i['gamertag'].lower())
         logging.debug('Statement is: \n\t' + s)
         c.execute(s)
     con.commit()
@@ -188,13 +188,19 @@ def addItemToDb(i, c):
     return i # TODO fill this out
 
 
-def downloadMissingData(inTables):
+def downloadMissingData(inTables, maxNum=float("inf")):
     logging.info('Getting ready to download all missing data (clips/grabs)')
+
+    counter = 1
 
     con = getDb()
     c = con.cursor()
 
     for t in inTables:
+        if counter > maxNum:
+            logging.info('Counter reached max: ' + str(counter))
+            continue
+
         logging.info('Looking at database table: ' + t['name'])
         logging.debug('Grabbing candidates')
         selArr = [t['primaryCol']['colName'], 'titleName', 'deviceType', t['downloadCol'], 'datePublished', 'xuid']
@@ -207,6 +213,9 @@ def downloadMissingData(inTables):
 
         # TODO add decorator for tqdm here
         for r in all_rows:
+            if counter > maxNum:
+                continue
+
             logging.debug('Getting Account details')
             s = "SELECT {gt} FROM {at} WHERE {xidn}={xid}"\
                 .format(gt='gamertag', at=accountTable['name'], \
@@ -231,7 +240,11 @@ def downloadMissingData(inTables):
             cnt = 0
             uris = json.loads(r[3])
             downed = []
+            totalSuccess = False
             for v in uris:
+                if counter > maxNum:
+                    logging.info('Counter reached max: ' + str(counter))
+                    continue
                 # TODO log this back to the DB (if success)
                 dateString = r[4][:19].replace(':','')
                 fn = r[4] + '_' + r[0][:7] + '_' + str(cnt)
@@ -241,18 +254,22 @@ def downloadMissingData(inTables):
                 elif t['name'] is 'grabs':
                     fn = fn + '.png'
                 fn = os.path.join(d,fn)
-                downloadFile(v['uri'], fn)
+                success = downloadFile(v['uri'], fn)
 
-                downed.append(fn)
                 cnt += 1
+                if success:
+                    totalSuccess = True
+                    downed.append(fn)
+                    counter += 1
 
-            # Add back the paths to the db
-            logging.debug('Adding file paths back to db')
-            s = "UPDATE {tn} SET {c}=('{p}') WHERE {idf}=('{id}')"\
-                .format(tn=t['name'], c='localDiskPath', p=','.join(downed), \
-                    idf=t['primaryCol']['colName'], id=r[0])
-            logging.debug('Statement is: \n\t' + s)
-            c.execute(s)
+            if totalSuccess:
+                # Add back the paths to the db
+                logging.debug('Adding file paths back to db')
+                s = "UPDATE {tn} SET {c}=('{p}') WHERE {idf}=('{id}')"\
+                    .format(tn=t['name'], c='localDiskPath', p=','.join(downed), \
+                        idf=t['primaryCol']['colName'], id=r[0])
+                logging.debug('Statement is: \n\t' + s)
+                c.execute(s)
 
     con.commit()
     con.close()
@@ -262,30 +279,37 @@ def downloadMissingData(inTables):
 ### Then http://blog.radevic.com/2012/07/python-download-url-to-file-with.html
 def downloadFile(url, file_name):
     req = getReq(url)
-    u = urllib2.urlopen(req)
-    f = open(file_name, 'wb')
-    meta = u.info()
-    file_size = int(meta.getheaders("Content-Length")[0])
-    logging.info('Downloading: {0} Bytes: {1} \n\tUrl: {2}'.format(file_name, file_size, url))
-    logging.debug('Download response info: \n\t' + str(u.info()))
-    arr = file_name.split('/')
-    shortfn = arr[-1]
-    game = arr[-2]
+    logging.info('Downloading: {0} \n\tUrl: {1}'.format(file_name, url))
+    try:
+        u = urllib2.urlopen(req)
+        f = open(file_name, 'wb')
+        meta = u.info()
+        file_size = int(meta.getheaders("Content-Length")[0])
+        logging.debug('Download response info: \n\t' + str(u.info()))
+        arr = file_name.split('/')
+        shortfn = arr[-1]
+        game = arr[-2]
 
-    file_size_dl = 0
-    block_sz = 8192
-    while True:
-        buffer = u.read(block_sz)
-        if not buffer:
-            break
+        file_size_dl = 0
+        block_sz = 8192
+        while True:
+            buffer = u.read(block_sz)
+            if not buffer:
+                break
 
-        file_size_dl += len(buffer)
-        f.write(buffer)
-        status = r"%s/%s - %10d  [%3.2f%%]" % (game, shortfn, file_size_dl, file_size_dl * 100. / file_size)
-        status = status + chr(8)*(len(status)+1)
-        sys.stdout.write(status)
+            file_size_dl += len(buffer)
+            f.write(buffer)
+            status = r"%s/%s - %10d  [%3.2f%%]" % (game, shortfn, file_size_dl, file_size_dl * 100. / file_size)
+            status = status + chr(8)*(len(status)+1)
+            sys.stdout.write(status)
 
-    f.close()
+        f.close()
+        logging.debug('Download Success')
+        return True
+    except urllib2.HTTPError:
+        # TODO handle errors here
+        logging.warning('Yo something happened')
+        return False
 
 
 def getReq(url):
@@ -747,6 +771,10 @@ accountTable = {'name' : 'accounts',
                 'colName' : 'gamertag',
                 'colType' : TEXT,
                 'modify' : 'NOT NULL'
+            },{
+                'colName' : 'gamertagcompare',
+                'colType' : TEXT,
+                'modify' : 'NOT NULL'
             }],
             'columns' : [{
                 'colName' : 'firstname',
@@ -760,7 +788,8 @@ accountTable = {'name' : 'accounts',
 }
 
 
-tables = [clipTable, grabTable]
+dataTables = [clipTable, grabTable]
+allTables = [clipTable, grabTable, accountTable]
 
 # pathFinderClipIndex = {'name': 'path_finder_clips',
 #                     'table' : clipTable['name'],
@@ -787,6 +816,7 @@ if __name__ == "__main__":
     # parser.add_argument('name', help='Name of the project (and folder) to create', nargs='?', default='_stop_')
     # parser.add_argument('-c', '--contributors', dest='contributors', help='Contributors to the project', nargs=3, action='append', metavar=('cName', 'cEmail', 'cRank'))
     parser.add_argument('-d', '--download-missing', dest='dl', help='Download missing files', action='store_true')
+    parser.add_argument('-m', '--download-max', dest='dlm', help='Download a maximum number of missing files', type=int)
     parser.add_argument('-c', '--check-new', dest='c', help='Download new info from xboxapi', action='store_true')
     parser.add_argument('-u', '--user', dest='u', help='Designate xboxuserid(s) to get data for', action='append')
     parser.add_argument('-g', '--gamertag', dest='g', help='Designate gamertag(s) to get data for', action='append')
@@ -794,20 +824,17 @@ if __name__ == "__main__":
     # parser.add_argument('-s', '--scm', dest='scm', help='Which source control management you would like initialized', choices=['git', 'None'])
     # parser.add_argument('-t', '--template', dest='template', help="Template name (also used as the name of the template's enclosing folder)", default='Generic')
 
-    # parser.add_argument('-v', '--verbose', dest='verbosity', help='Increase verbosity (off/on/firehose)', action='count', default=0)
+    parser.add_argument('-v', '--verbose', dest='verbosity', help='Increase verbosity (off/on/firehose)', action='count', default=0)
     # parser.add_argument('dirs', help='Directories to check for duplicates', nargs='+')
     args = parser.parse_args()
     
-    # ### Initialize Logging ###
-    # if args.verbosity == 0:
-    #     l = logging.WARNING
-    # elif args.verbosity == 1:
-    #     l = logging.INFO
-    # else:
-    #     l = logging.DEBUG
-
-#   TODO remove, only for debuggin purposes
-    l = logging.DEBUG
+    ### Initialize Logging ###
+    if args.verbosity == 0:
+        l = logging.WARNING
+    elif args.verbosity == 1:
+        l = logging.INFO
+    else:
+        l = logging.DEBUG
         
     logging.basicConfig(level=l, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -817,10 +844,8 @@ if __name__ == "__main__":
 
     # checkForDupes(dirs)
 
-    ts = tables
-    ts.append(accountTable)
     # checkDatabase(ts, indexes)
-    checkDatabase(ts)
+    checkDatabase(allTables)
 
     if args.c:
         ### GamerTags
@@ -837,7 +862,10 @@ if __name__ == "__main__":
             getData(xboxUserId)
 
     if args.dl:
-        downloadMissingData(tables)
+        if args.dlm is not None:
+            downloadMissingData(dataTables, args.dlm)
+        else:
+            downloadMissingData(dataTables)
 
     ### Reset working directory to original ###
     os.chdir(cwd)
