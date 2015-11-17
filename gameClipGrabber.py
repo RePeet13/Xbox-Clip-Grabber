@@ -2,11 +2,13 @@ import argparse, errno, json, logging, os, pprint, sqlite3, sys, urllib, urllib2
 
 xboxApiKey = '6b9f4356b93ddf78c4fb24f799da1f11b907bb21'
 xboxApiBase = 'https://xboxapi.com/v2/'
-xboxUserId = '2533274953123046' # For DishiestOcean55: 2533274953123046
+xboxUserId = '2533274953123046' # For DishiestOcean55: 2533274953123046, for BearBiever: 2533274943564661
 headers = {'X-AUTH' : xboxApiKey}
 # These urls are for all the game items, it might be possible/desireable to only get the saved ones
 clipsUrl = 'game-clips'
 grabsUrl = 'screenshots'
+getGamerTagUrl = 'gamertag/'
+getXuidUrl = 'xuid/'
 
 dbName = 'gameClips.db'
 
@@ -57,9 +59,49 @@ def getGrabs(xboxId):
 
 
 def checkForXboxId(xuid):
-    logging.info('Checking for local details for xuid: ' + xuid)
-    # TODO fill this out
+    con = getDb()
+    c = con.cursor()
 
+    logging.info('Checking for local details for xuid: ' + xuid)
+    # TODO fill this out (check if exists in db)
+
+    logging.debug('Checking Account details')
+    s = "SELECT {gt} FROM {at} WHERE {xidn}={xid}"\
+        .format(gt='gamertag', at=accountTable['name'], \
+            xidn=accountTable['primaryCol']['colName'], xid=xuid)
+    logging.debug('Statement is: \n\t' + s)
+    c.execute(s)
+    id_exists = c.fetchone()
+
+    con.commit()
+    con.close()
+
+    if not id_exists:
+        logging.debug('Account not found, attempting population')
+        addAccountDetails(xuid)
+
+
+def addAccountDetails(xid):
+    # TODO play with other endpoints (like profile or gamercard are useful)
+
+    logging.info('Getting details for user id: ' + xid)
+    url = xboxApiBase + getGamerTagUrl + xid
+
+    # url = xboxApiBase + getXuidUrl + 'BearBiever'
+    req = getReq(url)
+    response = urllib2.urlopen(req)
+    # data = json.loads(response.read())
+    data = response.read()
+    logging.debug('Gamertag returned: \n\t' + str(data))
+
+    con = getDb()
+    c = con.cursor()
+    s = "INSERT OR IGNORE INTO {tn} ({idf}, {cn}) VALUES ({idv}, '{cnv}')".\
+        format(tn=accountTable['name'], idf=accountTable['primaryCol']['colName'], cn='gamertag',\
+            idv=xid, cnv=data)
+    c.execute(s)
+    con.commit()
+    con.close()
 
 ### Wrapper to add a list of items to the db
 def addListToDb(l):
@@ -129,6 +171,7 @@ def downloadMissingData(inTables):
 
     for t in inTables:
         logging.info('Looking at database table: ' + t['name'])
+        logging.debug('Grabbing candidates')
         selArr = [t['primaryCol']['colName'], 'titleName', 'deviceType', t[downloadColName], 'datePublished', 'xuid']
         s = "SELECT {sel} FROM {tn} WHERE ({cn} = NULL) OR ({cn} IS NULL)"\
             .format(sel=SEP.join(selArr), tn=t['name'], cn='localDiskPath') # TODO this and below shouldnt be hardcoded really
@@ -138,7 +181,15 @@ def downloadMissingData(inTables):
         all_rows = c.fetchall()
 
         for r in all_rows:
-            logging.debug(str(r))
+            logging.debug('Getting Account details')
+            s = "SELECT {gt} FROM {at} WHERE {xidn}={xid}"\
+                .format(gt='gamertag', at=accountTable['name'], \
+                    xidn=accountTable['primaryCol']['colName'], xid=r[5])
+            logging.debug('Statement is: \n\t' + s)
+            c.execute(s)
+
+
+
             d = os.path.join(getScriptPath(), basePath, r[1])
             mkDirDashP(d)
 
