@@ -229,7 +229,8 @@ def downloadMissingData(inTables, maxNum=float("inf")):
             mkDirDashP(d)
 
             ### Next layer is game
-            d = os.path.join(d, r[1])
+            # TODO should probably think about a directory/filename safe string converter
+            d = os.path.join(d, r[1].replace(':','-'))
             mkDirDashP(d)
 
             ### Next layer is platform
