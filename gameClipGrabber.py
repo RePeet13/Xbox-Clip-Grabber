@@ -320,6 +320,13 @@ def getReq(url):
     return req
 
 
+def setName(idOrGt, whichName, name1):
+  # TODO as optional variable to take in both parts
+    pass
+  
+ 
+
+
 ### Check the schema of the database and open a new one if necessary
 ### http://sebastianraschka.com/Articles/2014_sqlite_in_python_tutorial.html (this method and below)
 # def checkDatabase(inTables, inIndexes):
