@@ -139,8 +139,9 @@ def addListToDb(l):
     con = getDb()
     c = con.cursor()
 
+    bar = progressbar.ProgressBar
     res = []
-    for listItem in l:
+    for listItem in bar(l):
         res.append(addItemToDb(listItem, c))
 
     con.commit()
