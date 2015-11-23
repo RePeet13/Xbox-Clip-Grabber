@@ -1,4 +1,10 @@
 import argparse, errno, json, logging, os, pprint, sqlite3, sys, urllib, urllib2
+# Import subfolder modules
+# from http://stackoverflow.com/questions/279237/import-a-module-from-a-relative-path
+cmd_subfolder = os.path.realpath(os.path.abspath(os.path.join(os.path.split(inspect.getfile( inspect.currentframe() ))[0],"lib")))
+if cmd_subfolder not in sys.path:
+    sys.path.insert(0, cmd_subfolder)
+import progressbar
 
 xboxApiKey = '6b9f4356b93ddf78c4fb24f799da1f11b907bb21'
 xboxApiBase = 'https://xboxapi.com/v2/'
