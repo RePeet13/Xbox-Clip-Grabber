@@ -1,4 +1,4 @@
-import argparse, errno, json, logging, os, pprint, sqlite3, sys, urllib, urllib2
+import argparse, errno, inspect, json, logging, os, pprint, sqlite3, sys, urllib, urllib2
 # Import subfolder modules
 # from http://stackoverflow.com/questions/279237/import-a-module-from-a-relative-path
 cmd_subfolder = os.path.realpath(os.path.abspath(os.path.join(os.path.split(inspect.getfile( inspect.currentframe() ))[0],"lib")))
@@ -44,7 +44,7 @@ def getClips(xboxId):
     url = xboxApiBase + xboxId + '/' + clipsUrl
     req = getReq(url)
     response = urllib2.urlopen(req)
-    data = json.loads(response.read()) # TODO verify this
+    data = byteify(json.loads(response.read())) # TODO verify this
 
     result = addListToDb(data)
 
@@ -57,7 +57,7 @@ def getGrabs(xboxId):
     url = xboxApiBase + xboxId + '/' + grabsUrl
     req = getReq(url)
     response = urllib2.urlopen(req)
-    data = json.loads(response.read())
+    data = byteify(json.loads(response.read()))
 
     result = addListToDb(data)
 
@@ -68,7 +68,7 @@ def checkForXboxId(xuid):
     con = getDb()
     c = con.cursor()
 
-    logging.info('Checking for local details for xuid: ' + xuid)
+    logging.info('Checking for local details for xuid: ' + str(xuid))
 
     s = "SELECT {gt} FROM {at} WHERE {xidn}={xid}"\
         .format(gt='gamertag', at=accountTable['name'], \
@@ -82,7 +82,10 @@ def checkForXboxId(xuid):
 
     if not id_exists:
         logging.debug('Account not found, attempting population')
-        addAccountDetails(getInfosFromXuids([xuid]))
+        infoResponse = getInfosFromXuids([xuid])
+        for a in infoResponse:
+            if a['success']:
+                addAccountDetails(a)
 
 
 def addAccountDetails(infos):
@@ -90,6 +93,7 @@ def addAccountDetails(infos):
     con = getDb()
     c = con.cursor()
     for i in infos:
+        logging.debug('All input info ' + str(i))
         logging.debug('Attempting add of account gamertag: ' + i['gamertag'])
         s = "INSERT OR IGNORE INTO {tn} ({idf}, {gt}, {gtc}) VALUES ({idv}, '{gtv}', '{gtcv}')".\
             format(tn=accountTable['name'], idf=accountTable['primaryCol']['colName'], gt='gamertag',\
@@ -108,11 +112,24 @@ def getInfosFromXuids(xids):
         url = xboxApiBase + getGamerTagUrl + xid
         req = getReq(url)
         response = urllib2.urlopen(req)
-        gts.append({
-            'xuid' : xid,
-            'gamertag' : response.read()
-            })
-            # TODO have some validation around this, maybe check http code
+        res = wrapHttpResponse(byteify(json.loads(response.read())))
+        logging.debug(res)
+        if res['success'] is True:
+            gts.append({
+                'success' : True,
+                'xuid' : str(xid),
+                'gamertag' : res['response'],
+                'response' : res
+                })
+                # TODO have some validation around this, maybe check http code
+        else:
+            logging.error(res)
+            gts.append({
+                'success' : False,
+                'xuid' : str(xid),
+                'gamertag' : '',
+                'response' : res
+                })
 
     return gts
 
@@ -125,10 +142,24 @@ def getInfosFromGamertags(gts):
         url = xboxApiBase + getXuidUrl + g
         req = getReq(url)
         response = urllib2.urlopen(req)
-        xuids.append({
-            'xuid' : response.read(),
-            'gamertag' : g
-            }) # TODO have some validation around this, maybe check http code
+        res = wrapHttpResponse(byteify(json.loads(response.read())))
+        logging.debug(res)
+        if res['success']:
+            xuids.append({
+                'success' : True,
+                'xuid' : str(res['response']),
+                'gamertag' : g,
+                'response' : res
+                })
+                # TODO have some validation around this, maybe check http code
+        else:
+            logging.error(res)
+            xuids.append({
+                'success' : False,
+                'xuid' : '',
+                'gamertag' : g,
+                'response' : res
+                })
 
     return xuids
 
@@ -139,8 +170,12 @@ def addListToDb(l):
     con = getDb()
     c = con.cursor()
 
-    bar = progressbar.ProgressBar
+    bar = progressbar.ProgressBar()
     res = []
+    try:
+        logging.debug('List to add to db: ' + str([x[clipTable['primaryCol']['colName']] for x in l]))
+    except KeyError:
+        logging.debug('List to add to db: ' + str([x[grabTable['primaryCol']['colName']] for x in l]))
     for listItem in bar(l):
         res.append(addItemToDb(listItem, c))
 
@@ -501,6 +536,17 @@ def byteify(input):
         return input
 
 
+def wrapHttpResponse(res):
+    logging.debug(res)
+    try:
+        s = res['success']
+    except TypeError, KeyError:
+        return {
+            'success' : True,
+            'response': res
+        }
+
+
 ### Schema ### 
 # TODO Move this to its own file
 TEXT = 'TEXT'
@@ -646,7 +692,7 @@ clipTable = {'name' : 'clips',
                 'colType' : TEXT,
                 'modify' : 'DEFAULT NULL'
             },{
-                'colname' : 'notes',
+                'colName' : 'notes',
                 'colType' : TEXT,
                 'modify' : 'DEFAULT NULL'
             }]
@@ -779,7 +825,7 @@ grabTable = {'name' : 'grabs',
                 'colType' : TEXT,
                 'modify' : 'DEFAULT NULL'
             },{
-                'colname' : 'notes',
+                'colName' : 'notes',
                 'colType' : TEXT,
                 'modify' : 'DEFAULT NULL'
             }]
@@ -875,15 +921,21 @@ if __name__ == "__main__":
         ### GamerTags
         if args.g is not None and len(args.g) > 0:
             xids = getInfosFromGamertags(args.g)
-            addAccountDetails(xids)
-            for x in xids:
-                getData(x['xuid'])
+            for a in xids:
+                if a['success']:
+                    logging.debug('success')
+                    logging.debug(a)
+                    addAccountDetails([a])
+                    getData(a['xuid'])
+
         ### XboxUserIds
         if args.u is not None and len(args.u) > 0:
             for u in args.u:
                 getData(u)
         else:
-            getData(xboxUserId)
+            pass
+            #getData(xboxUserId)
+            # Hack that auto pulls my clips and stuff (should remove i guess)
 
     if args.dl:
         if args.dlm is not None:
