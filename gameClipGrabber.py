@@ -335,6 +335,9 @@ def downloadFile(url, file_name):
 
         file_size_dl = 0
         block_sz = 8192
+        
+        bar = progressbar.DataTransferBar(max_value=file_size).start()
+
         while True:
             buffer = u.read(block_sz)
             if not buffer:
@@ -342,12 +345,14 @@ def downloadFile(url, file_name):
 
             file_size_dl += len(buffer)
             f.write(buffer)
-            status = r"%s/%s - %10d  [%3.2f%%]" % (game, shortfn, file_size_dl, file_size_dl * 100. / file_size)
-            status = status + chr(8)*(len(status)+1)
-            sys.stdout.write(status)
+            bar.update(file_size_dl)
+            # status = r"%s/%s - %10d  [%3.2f%%]" % (game, shortfn, file_size_dl, file_size_dl * 100. / file_size)
+            # status = status + chr(8)*(len(status)+1)
+            # sys.stdout.write(status)
 
         f.close()
-        sys.stdout.write('\n')
+        bar.finish()
+        # sys.stdout.write('\n')
         logging.debug('Download Success')
         return True
     except urllib2.HTTPError:
