@@ -645,6 +645,10 @@ clipTable = {'name' : 'clips',
                 'colName' : 'localDiskPath',
                 'colType' : TEXT,
                 'modify' : 'DEFAULT NULL'
+            },{
+                'colname' : 'notes',
+                'colType' : TEXT,
+                'modify' : 'DEFAULT NULL'
             }]
 }
 
