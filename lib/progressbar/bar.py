@@ -12,10 +12,11 @@ from . import base
 
 
 class ProgressBarMixinBase(object):
+
     def __init__(self, **kwargs):
         pass
 
-    def start(self):
+    def start(self, **kwargs):
         pass
 
     def update(self, value=None):
@@ -30,6 +31,7 @@ class ProgressBarBase(collections.Iterable, ProgressBarMixinBase):
 
 
 class DefaultFdMixin(ProgressBarMixinBase):
+
     def __init__(self, fd=sys.stderr, **kwargs):
         self.fd = fd
         ProgressBarMixinBase.__init__(self, **kwargs)
@@ -43,9 +45,10 @@ class DefaultFdMixin(ProgressBarMixinBase):
         self.fd.write('\n')
 
 
-class ResizableMixin(DefaultFdMixin):
+class ResizableMixin(ProgressBarMixinBase):
+
     def __init__(self, term_width=None, **kwargs):
-        DefaultFdMixin.__init__(self, **kwargs)
+        ProgressBarMixinBase.__init__(self, **kwargs)
 
         self.signal_set = False
         if term_width:
@@ -56,8 +59,8 @@ class ResizableMixin(DefaultFdMixin):
                 import signal
                 signal.signal(signal.SIGWINCH, self._handle_resize)
                 self.signal_set = True
-            except:  # pragma: no cover
-                raise
+            except Exception:  # pragma: no cover
+                pass
 
     def _handle_resize(self, signum=None, frame=None):
         'Tries to catch resize signals sent from the terminal.'
@@ -66,16 +69,17 @@ class ResizableMixin(DefaultFdMixin):
         self.term_width = w
 
     def finish(self):  # pragma: no cover
-        DefaultFdMixin.finish(self)
+        ProgressBarMixinBase.finish(self)
         if self.signal_set:
             try:
                 import signal
                 signal.signal(signal.SIGWINCH, signal.SIG_DFL)
-            except:  # pragma no cover
+            except Exception:  # pragma no cover
                 pass
 
 
 class StdRedirectMixin(DefaultFdMixin):
+
     def __init__(self, redirect_stderr=False, redirect_stdout=False, **kwargs):
         DefaultFdMixin.__init__(self, **kwargs)
         self.redirect_stderr = redirect_stderr
@@ -402,12 +406,25 @@ class ProgressBar(StdRedirectMixin, ResizableMixin, ProgressBarBase):
 
     def _needs_update(self):
         'Returns whether the ProgressBar should redraw the line.'
-        if self.value > self.next_update or self.end_time:
-            return True
 
-        elif self.poll_interval:
+        if self.poll_interval:
             delta = datetime.now() - self.last_update_time
-            return delta > self.poll_interval
+            poll_status = delta > self.poll_interval
+        else:
+            poll_status = False
+
+        # Do not update if value increment is not large enough to
+        # add more bars to progressbar (according to current
+        # terminal width)
+        try:
+            divisor = self.max_value / self.term_width  # float division
+            if self.value // divisor == self.previous_value // divisor:
+                return poll_status or self.end_time
+        except Exception:
+            # ignore any division errors
+            pass
+
+        return self.value > self.next_update or poll_status or self.end_time
 
     def update(self, value=None):
         'Updates the ProgressBar to a new value.'
@@ -450,7 +467,9 @@ class ProgressBar(StdRedirectMixin, ResizableMixin, ProgressBarBase):
         ...
         >>> pbar.finish()
         '''
-        super(ProgressBar, self).start()
+        DefaultFdMixin.start(self, max_value=max_value)
+        ResizableMixin.start(self, max_value=max_value)
+        ProgressBarBase.start(self, max_value=max_value)
 
         self.max_value = max_value or self.max_value
         if self.max_value is None:
