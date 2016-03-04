@@ -18,9 +18,9 @@ getXuidUrl = 'xuid/'
 
 dbName = 'gameClips.db'
 
-basePath = 'data/' # relative to script location
-clipsPath = 'clips/'
-grabsPath = 'grabs/'
+basePath = 'data' # relative to script location
+clipsPath = 'clips'
+grabsPath = 'grabs'
 
 ### Path where this script resides ###
 def getScriptPath():
