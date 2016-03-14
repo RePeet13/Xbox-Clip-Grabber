@@ -295,6 +295,7 @@ def downloadMissingData(inTables, maxNum=float("inf")):
                     logging.info('Counter reached max: ' + str(counter))
                     continue
                 # TODO log this back to the DB (if success)
+                # TODO should be checking the expiration of the link, and marking it as tried/expired if it doesn't work, then ignore it in the 'missing' query (new column for 'skip')
                 logging.debug('URI to be downloaded is:\n' + str(v))
                 dateString = r[4][:19].replace(':','')
                 fn = dateString + '_' + r[0][:7] + '_' + str(cnt)
@@ -328,9 +329,9 @@ def downloadMissingData(inTables, maxNum=float("inf")):
 ### Initially http://stackoverflow.com/a/22776/286994
 ### Then http://blog.radevic.com/2012/07/python-download-url-to-file-with.html
 def downloadFile(url, file_name):
-    req = getReq(url)
-    logging.info('Downloading: {0} \n\tUrl: {1}'.format(file_name, url))
     try:
+        req = getReq(url)
+        logging.info('Downloading: {0} \n\tUrl: {1}'.format(file_name, url))
         u = urllib2.urlopen(req)
         f = open(file_name, 'wb')
         meta = u.info()
@@ -364,8 +365,13 @@ def downloadFile(url, file_name):
         return True
     except urllib2.HTTPError as e:
         # TODO handle errors here
-        logging.warning('Yo something happened')
-        logging.debug('Error while downloading the file: {0}\n{1}'.format(e.errno, e.strerror))
+        # mark as errored in the db
+        logging.error('Error while downloading the file: {0}\n{1}'.format(e.errno, e.strerror))
+        return False
+    except UnicodeEncodeError as e:
+        logging.error('Unicode error: {0}\n{1}'.format(e.errno, e.strerror))
+        logging.error('Annoyance in FileName:\n' + str(file_name))
+        logging.error('Or in url:\n' + str(url))
         return False
 
 
