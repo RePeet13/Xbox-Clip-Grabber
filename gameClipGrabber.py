@@ -167,6 +167,7 @@ def getInfosFromGamertags(gts):
 ### Wrapper to add a list of items to the db
 def addListToDb(l):
     logging.info('Adding list to database')
+    logging.debug('Adding ' + str(len(l)) + ' items to the db')
     con = getDb()
     c = con.cursor()
 
@@ -253,6 +254,11 @@ def downloadMissingData(inTables, maxNum=float("inf")):
 
         all_rows = c.fetchall()
 
+        if len(all_rows):
+            print ('Looks like there are ' + str(len(all_rows)) + ' clips/grabs missing from the local filesystem')
+        else:
+            print ('Looks like the local filesystem is up to date!')
+        
         # TODO add decorator for tqdm here
         for r in all_rows:
             if counter > maxNum:
@@ -289,6 +295,7 @@ def downloadMissingData(inTables, maxNum=float("inf")):
                     logging.info('Counter reached max: ' + str(counter))
                     continue
                 # TODO log this back to the DB (if success)
+                logging.debug('URI to be downloaded is:\n' + str(v))
                 dateString = r[4][:19].replace(':','')
                 fn = dateString + '_' + r[0][:7] + '_' + str(cnt)
                 # TODO parse uri for this instead of hardcode
@@ -355,9 +362,10 @@ def downloadFile(url, file_name):
         # sys.stdout.write('\n')
         logging.debug('Download Success')
         return True
-    except urllib2.HTTPError:
+    except urllib2.HTTPError as e:
         # TODO handle errors here
         logging.warning('Yo something happened')
+        logging.debug('Error while downloading the file: {0}\n{1}'.format(e.errno, e.strerror))
         return False
 
 
