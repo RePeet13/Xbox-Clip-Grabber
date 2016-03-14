@@ -279,6 +279,7 @@ def downloadMissingData(inTables, maxNum=float("inf")):
             ### Next layer is game
             # TODO should probably think about a directory/filename safe string converter
             d = os.path.join(d, r[1].replace(':','-'))
+            d = d.encode('ascii', 'ignore')
             mkDirDashP(d)
 
             ### Next layer is platform
@@ -314,6 +315,7 @@ def downloadMissingData(inTables, maxNum=float("inf")):
                     counter += 1
 
             if totalSuccess:
+                # TODO this should probably be done whether or not total success happened (because we want to record the ones we did get)
                 # Add back the paths to the db
                 logging.debug('Adding file paths back to db')
                 s = "UPDATE {tn} SET {c}=('{p}') WHERE {idf}=('{id}')"\
@@ -329,6 +331,8 @@ def downloadMissingData(inTables, maxNum=float("inf")):
 ### Initially http://stackoverflow.com/a/22776/286994
 ### Then http://blog.radevic.com/2012/07/python-download-url-to-file-with.html
 def downloadFile(url, file_name):
+    # url = url.encode('ascii', 'ignore')
+    # file_name = file_name.encode('ascii', 'ignore')
     try:
         req = getReq(url)
         logging.info('Downloading: {0} \n\tUrl: {1}'.format(file_name, url))
@@ -369,7 +373,7 @@ def downloadFile(url, file_name):
         logging.error('Error while downloading the file: {0}\n{1}'.format(e.errno, e.strerror))
         return False
     except UnicodeEncodeError as e:
-        logging.error('Unicode error: {0}\n{1}'.format(e.errno, e.strerror))
+        # logging.error('Unicode error: {0}\n{1}'.format(e.errno, e.strerror))
         logging.error('Annoyance in FileName:\n' + str(file_name))
         logging.error('Or in url:\n' + str(url))
         return False
