@@ -230,14 +230,11 @@ def addItemToDb(i, c):
 
     return i # TODO fill this out
 
-
-def downloadMissingData(inTables, maxNum=float("inf")):
-    logging.info('Getting ready to download all missing data (clips/grabs)')
-
-    counter = 1
+def checkForMissingData(inTables, dl, maxNum=float("inf")):
 
     con = getDb()
     c = con.cursor()
+    counter = 1
 
     for t in inTables:
         if counter > maxNum:
@@ -253,79 +250,92 @@ def downloadMissingData(inTables, maxNum=float("inf")):
         c.execute(s)
 
         all_rows = c.fetchall()
+        print ('Looks like there are ' + str(len(all_rows)) + ' ' + t['name'] + ' missing from the local filesystem')
 
-        if len(all_rows):
-            print ('Looks like there are ' + str(len(all_rows)) + ' clips/grabs missing from the local filesystem')
-        else:
-            print ('Looks like the local filesystem is up to date!')
-        
-        # TODO add decorator for tqdm here
-        for r in all_rows:
-            if counter > maxNum:
-                continue
-
-            logging.debug('Getting Account details')
-            s = "SELECT {gt} FROM {at} WHERE {xidn}={xid}"\
-                .format(gt='gamertag', at=accountTable['name'], \
-                    xidn=accountTable['primaryCol']['colName'], xid=r[5])
-            logging.debug('Statement is: \n\t' + s)
-            c.execute(s)
-
-            gt = c.fetchone()
-            ### Top layer is gamer tag
-            d = os.path.join(getScriptPath(), basePath, gt[0])
-            mkDirDashP(d)
-
-            ### Next layer is game
-            # TODO should probably think about a directory/filename safe string converter
-            d = os.path.join(d, r[1].replace(':','-'))
-            d = d.encode('ascii', 'ignore')
-            mkDirDashP(d)
-
-            ### Next layer is platform
-            ### Commenting out since I currently dont care about multiple devices (xboxone, etc)
-            # d = os.path.join(d, r[2])
-            # mkDirDashP(d)
-
-            cnt = 0
-            uris = json.loads(r[3])
-            downed = []
-            totalSuccess = False
-            for v in uris:
-                if counter > maxNum:
-                    logging.info('Counter reached max: ' + str(counter))
-                    continue
-                # TODO log this back to the DB (if success)
-                # TODO should be checking the expiration of the link, and marking it as tried/expired if it doesn't work, then ignore it in the 'missing' query (new column for 'skip')
-                logging.debug('URI to be downloaded is:\n' + str(v))
-                dateString = r[4][:19].replace(':','')
-                fn = dateString + '_' + r[0][:7] + '_' + str(cnt)
-                # TODO parse uri for this instead of hardcode
-                if t['name'] is 'clips':
-                    fn = fn + '.mp4'
-                elif t['name'] is 'grabs':
-                    fn = fn + '.png'
-                fn = os.path.join(d,fn)
-                success = downloadFile(v['uri'], fn)
-
-                cnt += 1
-                if success:
-                    totalSuccess = True
-                    downed.append(fn)
-                    counter += 1
-
-            if totalSuccess:
-                # TODO this should probably be done whether or not total success happened (because we want to record the ones we did get)
-                # Add back the paths to the db
-                logging.debug('Adding file paths back to db')
-                s = "UPDATE {tn} SET {c}=('{p}') WHERE {idf}=('{id}')"\
-                    .format(tn=t['name'], c='localDiskPath', p=','.join(downed), \
-                        idf=t['primaryCol']['colName'], id=r[0])
-                logging.debug('Statement is: \n\t' + s)
-                c.execute(s)
+        if dl:
+            if len(all_rows):
+                counter = downloadMissingData(t, all_rows, counter, maxNum)
+            else:
+                print ('Looks like the local filesystem is up to date!')
 
     con.commit()
     con.close()
+
+
+def downloadMissingData(t, all_rows, counter, maxNum=float("inf")):
+    logging.info('Getting ready to download all missing data (clips/grabs)')
+
+    con = getDb()
+    c = con.cursor()
+        
+    for r in all_rows:
+        if counter > maxNum:
+            continue
+
+        logging.debug('Getting Account details')
+        s = "SELECT {gt} FROM {at} WHERE {xidn}={xid}"\
+            .format(gt='gamertag', at=accountTable['name'], \
+                xidn=accountTable['primaryCol']['colName'], xid=r[5])
+        logging.debug('Statement is: \n\t' + s)
+        c.execute(s)
+
+        gt = c.fetchone()
+        ### Top layer is gamer tag
+        d = os.path.join(getScriptPath(), basePath, gt[0])
+        mkDirDashP(d)
+
+        ### Next layer is game
+        # TODO should probably think about a directory/filename safe string converter
+        d = os.path.join(d, r[1].replace(':','-'))
+        d = d.encode('ascii', 'ignore')
+        mkDirDashP(d)
+
+        ### Next layer is platform
+        ### Commenting out since I currently dont care about multiple devices (xboxone, etc)
+        # d = os.path.join(d, r[2])
+        # mkDirDashP(d)
+
+        cnt = 0
+        uris = json.loads(r[3])
+        downed = []
+        totalSuccess = False
+        for v in uris:
+            if counter > maxNum:
+                logging.info('Counter reached max: ' + str(counter))
+                continue
+            # TODO log this back to the DB (if success)
+            # TODO should be checking the expiration of the link, and marking it as tried/expired if it doesn't work, then ignore it in the 'missing' query (new column for 'skip')
+            logging.debug('URI to be downloaded is:\n' + str(v))
+            dateString = r[4][:19].replace(':','')
+            fn = dateString + '_' + r[0][:7] + '_' + str(cnt)
+            # TODO parse uri for this instead of hardcode
+            if t['name'] is 'clips':
+                fn = fn + '.mp4'
+            elif t['name'] is 'grabs':
+                fn = fn + '.png'
+            fn = os.path.join(d,fn)
+            success = downloadFile(v['uri'], fn)
+
+            cnt += 1
+            if success:
+                totalSuccess = True
+                downed.append(fn)
+                counter += 1
+
+        if totalSuccess:
+            # TODO this should probably be done whether or not total success happened (because we want to record the ones we did get)
+            # Add back the paths to the db
+            logging.debug('Adding file paths back to db')
+            s = "UPDATE {tn} SET {c}=('{p}') WHERE {idf}=('{id}')"\
+                .format(tn=t['name'], c='localDiskPath', p=','.join(downed), \
+                    idf=t['primaryCol']['colName'], id=r[0])
+            logging.debug('Statement is: \n\t' + s)
+            c.execute(s)
+
+    con.commit()
+    con.close()
+
+    return counter
 
 
 ### Initially http://stackoverflow.com/a/22776/286994
@@ -341,7 +351,7 @@ def downloadFile(url, file_name):
         meta = u.info()
         file_size = int(meta.getheaders("Content-Length")[0])
         logging.debug('Download response info: \n\t' + str(u.info()))
-        arr = file_name.split('/')
+        arr = file_name.split(os.sep)
         shortfn = arr[-1]
         game = arr[-2]
 
@@ -902,23 +912,15 @@ if __name__ == "__main__":
     cwd = os.getcwd()
     
     ### Arg Parsing ###
-    
-    # TODO decide on and adjust to match args and parsing
-
     parser = argparse.ArgumentParser()
-    # parser.add_argument('name', help='Name of the project (and folder) to create', nargs='?', default='_stop_')
-    # parser.add_argument('-c', '--contributors', dest='contributors', help='Contributors to the project', nargs=3, action='append', metavar=('cName', 'cEmail', 'cRank'))
     parser.add_argument('-d', '--download-missing', dest='dl', help='Download missing files', action='store_true')
     parser.add_argument('-m', '--download-max', dest='dlm', help='Download a maximum number of missing files', type=int)
     parser.add_argument('-c', '--check-new', dest='c', help='Download new info from xboxapi', action='store_true')
     parser.add_argument('-u', '--user', dest='u', help='Designate xboxuserid(s) to get data for', action='append')
     parser.add_argument('-g', '--gamertag', dest='g', help='Designate gamertag(s) to get data for', action='append')
-    # parser.add_argument('-i', '--info', dest='info', help='Very short description of the project')
-    # parser.add_argument('-s', '--scm', dest='scm', help='Which source control management you would like initialized', choices=['git', 'None'])
-    # parser.add_argument('-t', '--template', dest='template', help="Template name (also used as the name of the template's enclosing folder)", default='Generic')
+    parser.add_argument('-n', '--notify', dest='n', help='Notify of undownloaded clips/grabs', action='store_true')
 
     parser.add_argument('-v', '--verbose', dest='verbosity', help='Increase verbosity (off/on/firehose)', action='count', default=0)
-    # parser.add_argument('dirs', help='Directories to check for duplicates', nargs='+')
     args = parser.parse_args()
     
     ### Initialize Logging ###
@@ -933,11 +935,6 @@ if __name__ == "__main__":
 
     logging.debug(str(args))
 
-    # dirs = massageInputDirs(args.dirs)
-
-    # checkForDupes(dirs)
-
-    # checkDatabase(ts, indexes)
     checkDatabase(allTables)
 
     if args.c:
@@ -950,6 +947,7 @@ if __name__ == "__main__":
                     logging.debug(a)
                     addAccountDetails([a])
                     getData(a['xuid'])
+                    checkForMissingData(dataTables, False)
 
         ### XboxUserIds
         if args.u is not None and len(args.u) > 0:
@@ -960,11 +958,12 @@ if __name__ == "__main__":
             #getData(xboxUserId)
             # Hack that auto pulls my clips and stuff (should remove i guess)
 
+
     if args.dl:
         if args.dlm is not None:
-            downloadMissingData(dataTables, args.dlm)
+            checkForMissingData(dataTables, True, args.dlm)
         else:
-            downloadMissingData(dataTables)
+            checkForMissingData(dataTables, True)
 
     ### Reset working directory to original ###
     os.chdir(cwd)
