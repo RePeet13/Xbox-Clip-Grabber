@@ -230,7 +230,30 @@ def addItemToDb(i, c):
 
     return i # TODO fill this out
 
-def checkForMissingData(inTables, dl, xuid=False, maxNum=float("inf")):
+def doNotify(person):
+    con = getDb()
+    c = con.cursor()
+
+    # selArr = [t['primaryCol']['colName'], 'titleName', 'deviceType', t['downloadCol'], 'datePublished', 'xuid']
+    # s = "SELECT {sel} FROM {tn} WHERE ({cn} = NULL) OR ({cn} IS NULL)"\
+    #     .format(sel=SEP.join(selArr), tn=t['name'], cn='localDiskPath') # TODO this and below shouldnt be hardcoded really
+        
+    # #-------------
+
+    # logging.debug('All input info ' + str(i))
+    # logging.debug('Attempting add of account gamertag: ' + i['gamertag'])
+    # s = "INSERT OR IGNORE INTO {tn} ({idf}, {gt}, {gtc}) VALUES ({idv}, '{gtv}', '{gtcv}')".\
+    #     format(tn=accountTable['name'], idf=accountTable['primaryCol']['colName'], gt='gamertag',\
+    #         gtc='gamertagcompare', idv=i['xuid'], gtv=i['gamertag'], gtcv=i['gamertag'].lower())
+    # logging.debug('Statement is: \n\t' + s)
+    # c.execute(s)
+
+    con.commit()
+    con.close()
+    pass
+
+
+def checkForMissingData(inTables, dl, xuid=False, notif, maxNum=float("inf")):
 
     con = getDb()
     c = con.cursor()
@@ -254,11 +277,13 @@ def checkForMissingData(inTables, dl, xuid=False, maxNum=float("inf")):
         all_rows = c.fetchall()
         print ('Looks like there are ' + str(len(all_rows)) + ' ' + t['name'] + ' missing from the local filesystem')
 
-        if dl:
-            if len(all_rows):
+        if len(all_rows):
+            if notif and xuid:
+                doNotify(xuid)
+            if dl:
                 counter = downloadMissingData(t, all_rows, counter, maxNum)
-            else:
-                print ('Looks like the local filesystem is up to date!')
+        else:
+            print ('Looks like the local filesystem is up to date!')
 
     con.commit()
     con.close()
@@ -950,7 +975,7 @@ if __name__ == "__main__":
                     print(a['gamertag'])
                     addAccountDetails([a])
                     getData(a['xuid'])
-                    checkForMissingData(dataTables, False, a)
+                    checkForMissingData(dataTables, False, a, args.n)
 
         ### XboxUserIds
         if args.u is not None and len(args.u) > 0:
@@ -964,9 +989,9 @@ if __name__ == "__main__":
 
     if args.dl:
         if args.dlm is not None:
-            checkForMissingData(dataTables, True, False, args.dlm)
+            checkForMissingData(dataTables, True, False, args.n, args.dlm)
         else:
-            checkForMissingData(dataTables, True, False)
+            checkForMissingData(dataTables, True, False, args.n)
 
     ### Reset working directory to original ###
     os.chdir(cwd)
