@@ -230,7 +230,7 @@ def addItemToDb(i, c):
 
     return i # TODO fill this out
 
-def checkForMissingData(inTables, dl, maxNum=float("inf")):
+def checkForMissingData(inTables, dl, xuid=False, maxNum=float("inf")):
 
     con = getDb()
     c = con.cursor()
@@ -246,6 +246,8 @@ def checkForMissingData(inTables, dl, maxNum=float("inf")):
         selArr = [t['primaryCol']['colName'], 'titleName', 'deviceType', t['downloadCol'], 'datePublished', 'xuid']
         s = "SELECT {sel} FROM {tn} WHERE ({cn} = NULL) OR ({cn} IS NULL)"\
             .format(sel=SEP.join(selArr), tn=t['name'], cn='localDiskPath') # TODO this and below shouldnt be hardcoded really
+        if xuid:
+            s = s + " AND 'xuid' = " + xuid['xuid']
         logging.debug('Statement is: \n\t' + s)
         c.execute(s)
 
@@ -945,9 +947,10 @@ if __name__ == "__main__":
                 if a['success']:
                     logging.debug('success')
                     logging.debug(a)
+                    print(a['gamertag'])
                     addAccountDetails([a])
                     getData(a['xuid'])
-                    checkForMissingData(dataTables, False)
+                    checkForMissingData(dataTables, False, a)
 
         ### XboxUserIds
         if args.u is not None and len(args.u) > 0:
@@ -961,9 +964,9 @@ if __name__ == "__main__":
 
     if args.dl:
         if args.dlm is not None:
-            checkForMissingData(dataTables, True, args.dlm)
+            checkForMissingData(dataTables, True, False, args.dlm)
         else:
-            checkForMissingData(dataTables, True)
+            checkForMissingData(dataTables, True, False)
 
     ### Reset working directory to original ###
     os.chdir(cwd)
