@@ -253,7 +253,7 @@ def doNotify(person):
     pass
 
 
-def checkForMissingData(inTables, dl, xuid=False, notif, maxNum=float("inf")):
+def checkForMissingData(inTables, dl, xuid=False, notif=False, maxNum=float("inf")):
 
     con = getDb()
     c = con.cursor()
