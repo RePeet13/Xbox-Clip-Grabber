@@ -231,13 +231,19 @@ def addItemToDb(i, c):
     return i # TODO fill this out
 
 def doNotify(person):
+    logging.warning('Notifying now')
     con = getDb()
     c = con.cursor()
 
     # selArr = [t['primaryCol']['colName'], 'titleName', 'deviceType', t['downloadCol'], 'datePublished', 'xuid']
     # s = "SELECT {sel} FROM {tn} WHERE ({cn} = NULL) OR ({cn} IS NULL)"\
     #     .format(sel=SEP.join(selArr), tn=t['name'], cn='localDiskPath') # TODO this and below shouldnt be hardcoded really
-        
+    
+    s = "SELECT 'pbkey' FROM {tn} WHERE 'xuid' = {x}".format(tn=accountTable['name'], x=person)
+    logging.debug('Statement for getting pbkey to notify is:\n' + s)
+    c.execute(s)
+    sendNote({'title' : 'Clip notification',
+        'body' : 'You have undownloaded clips on Xbox'}, c.fetchone())
     # #-------------
 
     # logging.debug('All input info ' + str(i))
@@ -250,7 +256,20 @@ def doNotify(person):
 
     con.commit()
     con.close()
-    pass
+
+
+def sendNote(data, apikey):
+    values = {'type' : 'note',
+                'title' : data['title'],
+                'body' : data['body']}
+    pushurl = 'https://api.pushbullet.com/v2/pushes'
+    auth = 'Basic ' + (apikey).encode('base64').rstrip()
+
+    data = urllib.urlencode(values)
+    req = urllib2.Request(pushurl)
+    req.add_header('Authorization', auth)
+    req.add_data(data)
+    res = urllib2.urlopen(req)
 
 
 def checkForMissingData(inTables, dl, xuid=False, notif=False, maxNum=float("inf")):
@@ -275,15 +294,15 @@ def checkForMissingData(inTables, dl, xuid=False, notif=False, maxNum=float("inf
         c.execute(s)
 
         all_rows = c.fetchall()
-        print ('Looks like there are ' + str(len(all_rows)) + ' ' + t['name'] + ' missing from the local filesystem')
 
         if len(all_rows):
+            print ('Looks like there are ' + str(len(all_rows)) + ' ' + t['name'] + ' missing from the local filesystem')
             if notif and xuid:
                 doNotify(xuid)
             if dl:
                 counter = downloadMissingData(t, all_rows, counter, maxNum)
         else:
-            print ('Looks like the local filesystem is up to date!')
+            print (t['name'] + ':\tLooks like the local filesystem is up to date!')
 
     con.commit()
     con.close()
@@ -912,6 +931,10 @@ accountTable = {'name' : 'accounts',
                 'modify' : ''
             },{
                 'colName' : 'lastname',
+                'colType' : TEXT,
+                'modify' : ''
+            },{
+                'colName' : 'pbkey',
                 'colType' : TEXT,
                 'modify' : ''
             }]
