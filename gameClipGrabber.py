@@ -230,29 +230,21 @@ def addItemToDb(i, c):
 
     return i # TODO fill this out
 
-def doNotify(person):
+def doNotify(person, numRows):
     logging.warning('Notifying now')
     con = getDb()
     c = con.cursor()
 
-    # selArr = [t['primaryCol']['colName'], 'titleName', 'deviceType', t['downloadCol'], 'datePublished', 'xuid']
-    # s = "SELECT {sel} FROM {tn} WHERE ({cn} = NULL) OR ({cn} IS NULL)"\
-    #     .format(sel=SEP.join(selArr), tn=t['name'], cn='localDiskPath') # TODO this and below shouldnt be hardcoded really
-    
-    s = "SELECT 'pbkey' FROM {tn} WHERE 'xuid' = {x}".format(tn=accountTable['name'], x=person)
+    # TODO add logic to have custom notification preferences (aka how to notify)
+    s = "SELECT pbkey FROM {tn} WHERE xuid = '{x}'".format(tn=accountTable['name'], x=person['xuid'])
     logging.debug('Statement for getting pbkey to notify is:\n' + s)
     c.execute(s)
-    sendNote({'title' : 'Clip notification',
-        'body' : 'You have undownloaded clips on Xbox'}, c.fetchone())
-    # #-------------
-
-    # logging.debug('All input info ' + str(i))
-    # logging.debug('Attempting add of account gamertag: ' + i['gamertag'])
-    # s = "INSERT OR IGNORE INTO {tn} ({idf}, {gt}, {gtc}) VALUES ({idv}, '{gtv}', '{gtcv}')".\
-    #     format(tn=accountTable['name'], idf=accountTable['primaryCol']['colName'], gt='gamertag',\
-    #         gtc='gamertagcompare', idv=i['xuid'], gtv=i['gamertag'], gtcv=i['gamertag'].lower())
-    # logging.debug('Statement is: \n\t' + s)
-    # c.execute(s)
+    # TODO need error handling if apikey doesnt exist, looks like: (None,)
+    apikey = c.fetchone()[0]
+    logging.debug(apikey)
+    if apikey is not None:
+        sendNote({'title' : 'Clip notification',
+            'body' : 'You have ' + str(numRows) + ' undownloaded clips on Xbox'}, apikey)
 
     con.commit()
     con.close()
@@ -263,7 +255,7 @@ def sendNote(data, apikey):
                 'title' : data['title'],
                 'body' : data['body']}
     pushurl = 'https://api.pushbullet.com/v2/pushes'
-    auth = 'Basic ' + (apikey).encode('base64').rstrip()
+    auth = 'Basic ' + apikey.encode('base64').rstrip()
 
     data = urllib.urlencode(values)
     req = urllib2.Request(pushurl)
@@ -289,16 +281,18 @@ def checkForMissingData(inTables, dl, xuid=False, notif=False, maxNum=float("inf
         s = "SELECT {sel} FROM {tn} WHERE ({cn} = NULL) OR ({cn} IS NULL)"\
             .format(sel=SEP.join(selArr), tn=t['name'], cn='localDiskPath') # TODO this and below shouldnt be hardcoded really
         if xuid:
-            s = s + " AND 'xuid' = " + xuid['xuid']
+            s = s + " AND xuid = '" + xuid['xuid'] + "'"
         logging.debug('Statement is: \n\t' + s)
         c.execute(s)
 
         all_rows = c.fetchall()
+        logging.debug('All rows: Length - ' + str(len(all_rows)) + '\n' + str(all_rows))
 
+    # TODO add notified column
         if len(all_rows):
             print ('Looks like there are ' + str(len(all_rows)) + ' ' + t['name'] + ' missing from the local filesystem')
             if notif and xuid:
-                doNotify(xuid)
+                doNotify(xuid, len(all_rows))
             if dl:
                 counter = downloadMissingData(t, all_rows, counter, maxNum)
         else:
@@ -445,8 +439,6 @@ def getReq(url):
 def setName(idOrGt, whichName, name1):
   # TODO as optional variable to take in both parts
     pass
-  
- 
 
 
 ### Check the schema of the database and open a new one if necessary
@@ -502,12 +494,16 @@ def checkDatabase(inTables):
             try:
                 for col in missingCols:
                     # TODO this causes a problem if our intended primary key is missing, and there is already a primary key present
-                    logging.debug('Checking for column: ' + col)
-                    c.execute("ALTER TABLE {tn} ADD COLUMN '{nf}' {ft} {p}"\
-                        .format(tn=t['name'], nf=col['colName'], ft=col['colType'], p=col['modify']))
+                    logging.debug('Attempting add for column: ' + col)
+                    s = "ALTER TABLE {tn} ADD COLUMN '{nf}' {ft} {p}"\
+                        .format(tn=t['name'], nf=col['colName'], ft=col['colType'], p=col['modify'])
+                    logging.debug('Statement is: ' + s)
+                    c.execute(s)
             except:
-                logging.debug('There was an exception adding a missing column, blowing it away')
-                c.execute('DROP TABLE {}'.format(t['name']))
+                logging.debug('There was an exception adding a missing column, not blowing it away')
+                # TODO need a better solution than this...
+
+                # c.execute('DROP TABLE {}'.format(t['name']))
                 # TODO add to missing table array
 
     # TODO also check indexes?
