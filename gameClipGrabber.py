@@ -17,6 +17,7 @@ getGamerTagUrl = 'gamertag/'
 getXuidUrl = 'xuid/'
 
 dbName = 'gameClips.db'
+dbVersion = 1 # First versions of the clip grabber were all 0
 
 basePath = 'data' # relative to script location
 clipsPath = 'clips'
@@ -277,9 +278,9 @@ def checkForMissingData(inTables, dl, xuid=False, notif=False, maxNum=float("inf
 
         logging.info('Looking at database table: ' + t['name'])
         logging.debug('Grabbing candidates')
-        selArr = [t['primaryCol']['colName'], 'titleName', 'deviceType', t['downloadCol'], 'datePublished', 'xuid']
-        s = "SELECT {sel} FROM {tn} WHERE ({cn} = NULL) OR ({cn} IS NULL)"\
-            .format(sel=SEP.join(selArr), tn=t['name'], cn='localDiskPath') # TODO this and below shouldnt be hardcoded really
+        selArr = [t['primaryCol']['colName'], 'titleName', 'deviceType', t['downloadCol'], 'datePublished', 'xuid', v1AddCols[0]['colName']]
+        s = "SELECT {sel} FROM {tn} WHERE ({cn} = NULL) OR ({cn} IS NULL) AND {tried} > 3"\
+            .format(sel=SEP.join(selArr), tn=t['name'], cn='localDiskPath', tried=v1AddCols[0]['colName']) # TODO this and below shouldnt be hardcoded really
         if xuid:
             s = s + " AND xuid = '" + xuid['xuid'] + "'"
         logging.debug('Statement is: \n\t' + s)
@@ -371,6 +372,14 @@ def downloadMissingData(t, all_rows, counter, maxNum=float("inf")):
                     idf=t['primaryCol']['colName'], id=r[0])
             logging.debug('Statement is: \n\t' + s)
             c.execute(s)
+        else:
+            logging.debug('File download tried and failed')
+            s = "UPDATE {tn} SET {c}={p} WHERE {idf}=('{id}')"\
+                .format(tn=t['name'], c=v1AddCols[0]['colName'], p=r[6]+1, \
+                    idf=t['primaryCol']['colName'], id=r[0])
+            logging.debug('Statement is: \n\t' + s)
+            c.execute(s)
+
 
     con.commit()
     con.close()
@@ -445,13 +454,22 @@ def setName(idOrGt, whichName, name1):
 ### http://sebastianraschka.com/Articles/2014_sqlite_in_python_tutorial.html (this method and below)
 # def checkDatabase(inTables, inIndexes):
 def checkDatabase(inTables):
-
     logging.info('Checking db consistency')
 
     # TODO check if database actually exists at all?
 
     con = getDb()
     c = con.cursor()
+
+    s = 'PRAGMA user_version'
+    c.execute(s)
+    v = c.fetchone()[0]
+    logging.info('Database is version: ' + str(v))
+    
+    if v < dbVersion:
+        dbUpgradeToV1(con, c)
+    # TODO need to reconsider this strategy (since the dbs are being upgraded before checking if anything is missing)
+
 
     missingTables = []
 
@@ -563,6 +581,35 @@ def createDatabase(inTables):
 
     con.commit()
     con.close()
+
+
+###  Upgrade db from original
+def dbUpgradeToV1(con, c):
+    logging.warning('Upgrading db from version 0 to version 1')
+
+    # Check that it actually is version 0
+    s = 'PRAGMA user_version'
+    c.execute(s)
+    v = c.fetchone()[0]
+    logging.debug('In V1 upgrade script, database is version: ' + str(v))
+
+    if v = 0:
+        for c in v1AddCols:
+            for t in c['tableName']:
+                s = "ALTER TABLE {tn} ADD COLUMN '{nf}' {ft} {p}"\
+                        .format(tn=t, nf=c['colName'], ft=c['colType'], p=c['modify'])
+                logging.debug('Statement is: \n\t' + s)
+                c.execute(s)
+
+        s = 'PRAGMA user_version = 1'
+        c.execute(s)
+        logging.info('Database version 1 upgrade is complete')
+
+        con.commit()
+    elif v >= 1:
+        logging.error('In V1 upgrade script, but db is already at/past V1')
+        return
+    # TODO if version 2 is out, then move on to that upgrade script 
     
 
 ### Lil somethin somethin to standardize getting a connection to the db
@@ -623,6 +670,7 @@ def wrapHttpResponse(res):
 
 
 ### Schema ### 
+# These are all Version 0
 # TODO Move this to its own file
 TEXT = 'TEXT'
 INTEGER = 'INTEGER'
@@ -935,6 +983,14 @@ accountTable = {'name' : 'accounts',
                 'modify' : ''
             }]
 }
+
+### Columns to add on V1 db upgrade
+v1addCols = [{ # Columns to be added in V1
+            'colName' : 'timesAttempted',
+            'colType' : INTEGER,
+            'modify' : '',
+            'tableName' :  ['clips','grabs']
+        }]
 
 
 dataTables = [clipTable, grabTable]
