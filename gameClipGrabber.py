@@ -279,7 +279,7 @@ def checkForMissingData(inTables, dl, xuid=False, notif=False, maxNum=float("inf
         logging.info('Looking at database table: ' + t['name'])
         logging.debug('Grabbing candidates')
         selArr = [t['primaryCol']['colName'], 'titleName', 'deviceType', t['downloadCol'], 'datePublished', 'xuid', v1AddCols[0]['colName']]
-        s = "SELECT {sel} FROM {tn} WHERE ({cn} = NULL) OR ({cn} IS NULL) AND {tried} > 3"\
+        s = "SELECT {sel} FROM {tn} WHERE (({cn} = NULL) OR ({cn} IS NULL)) AND ({tried} < 3 OR {tried} IS NULL)"\
             .format(sel=SEP.join(selArr), tn=t['name'], cn='localDiskPath', tried=v1AddCols[0]['colName']) # TODO this and below shouldnt be hardcoded really
         if xuid:
             s = s + " AND xuid = '" + xuid['xuid'] + "'"
@@ -374,8 +374,9 @@ def downloadMissingData(t, all_rows, counter, maxNum=float("inf")):
             c.execute(s)
         else:
             logging.debug('File download tried and failed')
+            tries = 0 if r[6] is None else (r[6]+1)
             s = "UPDATE {tn} SET {c}={p} WHERE {idf}=('{id}')"\
-                .format(tn=t['name'], c=v1AddCols[0]['colName'], p=r[6]+1, \
+                .format(tn=t['name'], c=v1AddCols[0]['colName'], p=tries, \
                     idf=t['primaryCol']['colName'], id=r[0])
             logging.debug('Statement is: \n\t' + s)
             c.execute(s)
@@ -593,11 +594,11 @@ def dbUpgradeToV1(con, c):
     v = c.fetchone()[0]
     logging.debug('In V1 upgrade script, database is version: ' + str(v))
 
-    if v = 0:
-        for c in v1AddCols:
-            for t in c['tableName']:
+    if not v:
+        for col in v1AddCols:
+            for t in col['tableName']:
                 s = "ALTER TABLE {tn} ADD COLUMN '{nf}' {ft} {p}"\
-                        .format(tn=t, nf=c['colName'], ft=c['colType'], p=c['modify'])
+                        .format(tn=t, nf=col['colName'], ft=col['colType'], p=col['modify'])
                 logging.debug('Statement is: \n\t' + s)
                 c.execute(s)
 
@@ -985,7 +986,7 @@ accountTable = {'name' : 'accounts',
 }
 
 ### Columns to add on V1 db upgrade
-v1addCols = [{ # Columns to be added in V1
+v1AddCols = [{ # Columns to be added in V1
             'colName' : 'timesAttempted',
             'colType' : INTEGER,
             'modify' : '',
