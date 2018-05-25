@@ -39,14 +39,26 @@ def getData(xboxId):
     result.append(getGrabs(xboxId))
     return result
 
+### url: url to hit, pages: how many pages to get, -1 for all
+def getDataFromUrl(url, pages):
+    req = getReq(url)
+    response = urllib2.urlopen(req)
+    data = byteify(json.loads(response.read()))
+#    pprint.pprint(data)
+    if pages < 0: # get all pages
+        while 'x-continuation-token' in dict(response.info()):
+            logging.debug('Getting another page')
+            newurl = url + '?continuationToken=' + dict(response.info())['x-continuation-token']
+            req = getReq(newurl)
+            response = urllib2.urlopen(req)
+            data = data + byteify(json.loads(response.read()))
+    return data
+
 
 def getClips(xboxId):
     logging.info('Getting all the clips')
     url = xboxApiBase + xboxId + '/' + clipsUrl
-    req = getReq(url)
-    response = urllib2.urlopen(req)
-    data = byteify(json.loads(response.read())) # TODO verify this
-
+    data = getDataFromUrl(url, -1)
     result = addListToDb(data)
 
     return result # TODO change this to be more helpful (success true/false, error, etc)
@@ -56,10 +68,7 @@ def getGrabs(xboxId):
     logging.info('Getting all the grabs')
 
     url = xboxApiBase + xboxId + '/' + grabsUrl
-    req = getReq(url)
-    response = urllib2.urlopen(req)
-    data = byteify(json.loads(response.read()))
-
+    data = getDataFromUrl(url, -1)
     result = addListToDb(data)
 
     return result # TODO change this to be more helpful (success true/false, error, etc)
@@ -470,7 +479,7 @@ def checkDatabase(inTables):
     if v < dbVersion:
         dbUpgradeToV1(con, c)
     # TODO need to reconsider this strategy (since the dbs are being upgraded before checking if anything is missing)
-
+    # need to change this because when there is no db, it tries to alter a table that is not there (and fails)
 
     missingTables = []
 
