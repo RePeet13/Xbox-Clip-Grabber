@@ -183,10 +183,10 @@ def addListToDb(l):
 
     bar = progressbar.ProgressBar()
     res = []
-    try:
-        logging.debug('List to add to db: ' + str([x[clipTable['primaryCol']['colName']] for x in l]))
-    except KeyError:
-        logging.debug('List to add to db: ' + str([x[grabTable['primaryCol']['colName']] for x in l]))
+#    try:
+#        logging.debug('List to add to db: ' + str([x[clipTable['primaryCol']['colName']] for x in l]))
+#    except KeyError:
+#        logging.debug('List to add to db: ' + str([x[grabTable['primaryCol']['colName']] for x in l]))
     for listItem in bar(l):
         res.append(addItemToDb(listItem, c))
 
