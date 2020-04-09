@@ -1,10 +1,13 @@
-import argparse, errno, inspect, json, logging, os, pprint, sqlite3, sys, urllib, urllib2
+import apprise, argparse, datetime, errno, inspect, json, logging, os, pprint, sqlite3, sys, urllib
 # Import subfolder modules
 # from http://stackoverflow.com/questions/279237/import-a-module-from-a-relative-path
 cmd_subfolder = os.path.realpath(os.path.abspath(os.path.join(os.path.split(inspect.getfile( inspect.currentframe() ))[0],"lib")))
 if cmd_subfolder not in sys.path:
     sys.path.insert(0, cmd_subfolder)
 import progressbar
+
+# fullSlackXboxClipsWebhookUrl = https://hooks.slack.com/services/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
+appriseSlackUrl = 'slack://xbox-clip-notifier@T235VRDJ5/BNG1G1W8J/vmDeT05zpMIfoRFibhks6UaH/#xbox-clips'
 
 xboxApiKey = '6b9f4356b93ddf78c4fb24f799da1f11b907bb21'
 xboxApiBase = 'https://xboxapi.com/v2/'
@@ -17,7 +20,7 @@ getGamerTagUrl = 'gamertag/'
 getXuidUrl = 'xuid/'
 
 dbName = 'gameClips.db'
-dbVersion = 1 # First versions of the clip grabber were all 0
+dbVersion = 2 # Version 2: 11/30/19
 
 basePath = 'data' # relative to script location
 clipsPath = 'clips'
@@ -27,6 +30,21 @@ grabsPath = 'grabs'
 def getScriptPath():
     return os.path.dirname(os.path.realpath(__file__))
 
+
+def getCountsAsJson():
+    path = os.path.join(getScriptPath(), basePath)
+    gamers = [f for f in os.listdir(path) if not os.path.isfile(os.path.join(path, f))]
+    gamers.remove('Unversioned')
+    counts = {}
+    for gamer in gamers:
+        counts[gamer] = {'clips' : 0}
+        gamerPath = os.path.join(path, gamer)
+        for game in [f for f in os.listdir(gamerPath) if not os.path.isfile(os.path.join(gamerPath, f))]:
+            counts[gamer][game + ' - clips'] = len([f for f in os.listdir(os.path.join(gamerPath, game)) if os.path.isfile(os.path.join(gamerPath, game, f)) and 'mp4' in f])
+            counts[gamer][game + ' - grabs'] = len([f for f in os.listdir(os.path.join(gamerPath, game)) if os.path.isfile(os.path.join(gamerPath, game, f)) and 'png' in f])
+            counts[gamer]['clips'] = counts[gamer]['clips'] + counts[gamer][game + ' - clips']
+#    pprint.pprint(counts)
+    print(counts)
 
 def getData(xboxId):
     logging.info('Getting all data')
@@ -42,7 +60,7 @@ def getData(xboxId):
 ### url: url to hit, pages: how many pages to get, -1 for all
 def getDataFromUrl(url, pages):
     req = getReq(url)
-    response = urllib2.urlopen(req)
+    response = urllib.request.urlopen(req)
     data = byteify(json.loads(response.read()))
 #    pprint.pprint(data)
     if pages < 0: # get all pages
@@ -50,7 +68,7 @@ def getDataFromUrl(url, pages):
             logging.debug('Getting another page')
             newurl = url + '?continuationToken=' + dict(response.info())['x-continuation-token']
             req = getReq(newurl)
-            response = urllib2.urlopen(req)
+            response = urllib.request.urlopen(req)
             data = data + byteify(json.loads(response.read()))
     return data
 
@@ -69,6 +87,7 @@ def getGrabs(xboxId):
 
     url = xboxApiBase + xboxId + '/' + grabsUrl
     data = getDataFromUrl(url, -1)
+    # pprint.pprint(data)
     result = addListToDb(data)
 
     return result # TODO change this to be more helpful (success true/false, error, etc)
@@ -85,7 +104,7 @@ def checkForXboxId(xuid):
             xidn=accountTable['primaryCol']['colName'], xid=xuid)
     logging.debug('Statement is: \n\t' + s)
     c.execute(s)
-    id_exists = c.fetchone()
+    id_exists = c.fetchone()[0]
 
     con.commit()
     con.close()
@@ -96,6 +115,8 @@ def checkForXboxId(xuid):
         for a in infoResponse:
             if a['success']:
                 addAccountDetails(a)
+
+    return id_exists
 
 
 def addAccountDetails(infos):
@@ -121,7 +142,7 @@ def getInfosFromXuids(xids):
     for xid in xids:
         url = xboxApiBase + getGamerTagUrl + xid
         req = getReq(url)
-        response = urllib2.urlopen(req)
+        response = urllib.request.urlopen(req)
         res = wrapHttpResponse(byteify(json.loads(response.read())))
         logging.debug(res)
         if res['success'] is True:
@@ -151,7 +172,7 @@ def getInfosFromGamertags(gts):
     for g in gts:
         url = xboxApiBase + getXuidUrl + g
         req = getReq(url)
-        response = urllib2.urlopen(req)
+        response = urllib.request.urlopen(req)
         res = wrapHttpResponse(byteify(json.loads(response.read())))
         logging.debug(res)
         if res['success']:
@@ -183,6 +204,7 @@ def addListToDb(l):
 
     bar = progressbar.ProgressBar()
     res = []
+#    pprint.pprint(l)
     try:
         logging.debug('List to add to db: ' + str([x[clipTable['primaryCol']['colName']] for x in l]))
     except KeyError:
@@ -241,23 +263,25 @@ def addItemToDb(i, c):
     return i # TODO fill this out
 
 def doNotify(person, numRows):
-    logging.warning('Notifying now')
-    con = getDb()
-    c = con.cursor()
+    # Pass on this after adding apprise for slack notification
+    pass
+    # logging.warning('Notifying now')
+    # con = getDb()
+    # c = con.cursor()
 
-    # TODO add logic to have custom notification preferences (aka how to notify)
-    s = "SELECT pbkey FROM {tn} WHERE xuid = '{x}'".format(tn=accountTable['name'], x=person['xuid'])
-    logging.debug('Statement for getting pbkey to notify is:\n' + s)
-    c.execute(s)
-    # TODO need error handling if apikey doesnt exist, looks like: (None,)
-    apikey = c.fetchone()[0]
-    logging.debug(apikey)
-    if apikey is not None:
-        sendNote({'title' : 'Clip notification',
-            'body' : 'You have ' + str(numRows) + ' undownloaded clips on Xbox'}, apikey)
+    # # TODO add logic to have custom notification preferences (aka how to notify)
+    # s = "SELECT pbkey FROM {tn} WHERE xuid = '{x}'".format(tn=accountTable['name'], x=person['xuid'])
+    # logging.debug('Statement for getting pbkey to notify is:\n' + s)
+    # c.execute(s)
+    # # TODO need error handling if apikey doesnt exist, looks like: (None,)
+    # apikey = c.fetchone()[0]
+    # logging.debug(apikey)
+    # if apikey is not None:
+    #     sendNote({'title' : 'Clip notification',
+    #         'body' : 'You have ' + str(numRows) + ' undownloaded clips on Xbox'}, apikey)
 
-    con.commit()
-    con.close()
+    # con.commit()
+    # con.close()
 
 
 def sendNote(data, apikey):
@@ -268,10 +292,10 @@ def sendNote(data, apikey):
     auth = 'Basic ' + apikey.encode('base64').rstrip()
 
     data = urllib.urlencode(values)
-    req = urllib2.Request(pushurl)
+    req = urllib.request.Request(pushurl)
     req.add_header('Authorization', auth)
     req.add_data(data)
-    res = urllib2.urlopen(req)
+    res = urllib.request.urlopen(req)
 
 
 def checkForMissingData(inTables, dl, xuid=False, notif=False, maxNum=float("inf")):
@@ -337,7 +361,7 @@ def downloadMissingData(t, all_rows, counter, maxNum=float("inf")):
         ### Next layer is game
         # TODO should probably think about a directory/filename safe string converter
         d = os.path.join(d, r[1].replace(':','-'))
-        d = d.encode('ascii', 'ignore')
+        # d = d.encode('ascii', 'ignore')
         mkDirDashP(d)
 
         ### Next layer is platform
@@ -363,7 +387,7 @@ def downloadMissingData(t, all_rows, counter, maxNum=float("inf")):
                 fn = fn + '.mp4'
             elif t['name'] is 'grabs':
                 fn = fn + '.png'
-            fn = os.path.join(d,fn)
+            fn = os.path.join(d, fn)
             success = downloadFile(v['uri'], fn)
 
             cnt += 1
@@ -376,7 +400,7 @@ def downloadMissingData(t, all_rows, counter, maxNum=float("inf")):
             # TODO this should probably be done whether or not total success happened (because we want to record the ones we did get)
             # Add back the paths to the db
             logging.debug('Adding file paths back to db')
-            s = "UPDATE {tn} SET {c}=('{p}') WHERE {idf}=('{id}')"\
+            s = "UPDATE {tn} SET {c}=('{p}'),createdDate=DATETIME('now') WHERE {idf}=('{id}')"\
                 .format(tn=t['name'], c='localDiskPath', p=','.join(downed), \
                     idf=t['primaryCol']['colName'], id=r[0])
             logging.debug('Statement is: \n\t' + s)
@@ -405,10 +429,9 @@ def downloadFile(url, file_name):
     try:
         req = getReq(url)
         logging.info('Downloading: {0} \n\tUrl: {1}'.format(file_name, url))
-        u = urllib2.urlopen(req)
+        u = urllib.request.urlopen(req)
         f = open(file_name, 'wb')
-        meta = u.info()
-        file_size = int(meta.getheaders("Content-Length")[0])
+        file_size = int(u.getheader("Content-Length"))
         logging.debug('Download response info: \n\t' + str(u.info()))
         arr = file_name.split(os.sep)
         shortfn = arr[-1]
@@ -436,7 +459,7 @@ def downloadFile(url, file_name):
         # sys.stdout.write('\n')
         logging.debug('Download Success')
         return True
-    except urllib2.HTTPError as e:
+    except urllib.error.HTTPError as e:
         # TODO handle errors here
         # mark as errored in the db
         logging.error('Error while downloading the file: {0}\n{1}'.format(e.errno, e.strerror))
@@ -450,7 +473,7 @@ def downloadFile(url, file_name):
 
 def getReq(url):
     # TODO implement with headers from above
-    req = urllib2.Request(url)
+    req = urllib.request.Request(url)
     req.add_header('X-AUTH', xboxApiKey)
     return req
 
@@ -458,6 +481,44 @@ def getReq(url):
 def setName(idOrGt, whichName, name1):
   # TODO as optional variable to take in both parts
     pass
+
+def doNotifySlackWithNew(notifier):
+    logging.info('Notifying slack now')
+    con = getDb()
+    c = con.cursor()
+
+    whoAndWhat = {}
+    s = "SELECT xuid, gameClipId, localDiskPath FROM {tn} WHERE createdDate >= Datetime('now', '-1 day')".format(tn='clips')
+    logging.debug('Statement for getting stuff to notify is:\n' + s)
+    c.execute(s)
+    # TODO need error handling if apikey doesnt exist, looks like: (None,)
+    results = c.fetchall()
+    logging.debug(results)
+    logging.debug(len(results))
+
+    con.commit()
+    con.close()
+
+    splitter = '/media/data2/git/Xbox-Clip-Grabber/data/'
+    baseUrl = 'https://xbox.tpeet.net/'
+
+    for row in results:
+        gt = checkForXboxId(row[0])
+        if row[2]:
+            if gt not in whoAndWhat: # xuid of clip
+                whoAndWhat[gt] = []
+
+            url = baseUrl + urllib.parse.quote(row[2].split(splitter)[1])
+            whoAndWhat[gt].append(url)
+
+    print(whoAndWhat)
+    for gt in whoAndWhat:
+        for url in whoAndWhat[gt]:
+            notifier.notify(
+                title=gt + ' clip!',
+                body=url
+            )
+    
 
 
 ### Check the schema of the database and open a new one if necessary
@@ -477,7 +538,7 @@ def checkDatabase(inTables):
     logging.info('Database is version: ' + str(v))
     
     if v < dbVersion:
-        dbUpgradeToV1(con, c)
+        dbVersionUpgrade(con, c)
     # TODO need to reconsider this strategy (since the dbs are being upgraded before checking if anything is missing)
     # need to change this because when there is no db, it tries to alter a table that is not there (and fails)
 
@@ -594,8 +655,8 @@ def createDatabase(inTables):
 
 
 ###  Upgrade db from original
-def dbUpgradeToV1(con, c):
-    logging.warning('Upgrading db from version 0 to version 1')
+def dbVersionUpgrade(con, c):
+    logging.warning('Upgrading db version')
 
     # Check that it actually is version 0
     s = 'PRAGMA user_version'
@@ -604,6 +665,7 @@ def dbUpgradeToV1(con, c):
     logging.debug('In V1 upgrade script, database is version: ' + str(v))
 
     if not v:
+        # Do version upgrade from nothing to 1
         for col in v1AddCols:
             for t in col['tableName']:
                 s = "ALTER TABLE {tn} ADD COLUMN '{nf}' {ft} {p}"\
@@ -616,7 +678,21 @@ def dbUpgradeToV1(con, c):
         logging.info('Database version 1 upgrade is complete')
 
         con.commit()
-    elif v >= 1:
+    elif v is 1:
+        # Do version upgrade from 1 to 2
+        for col in v2AddCols:
+            for t in col['tableName']:
+                s = "ALTER TABLE {tn} ADD COLUMN '{nf}' {ft} {p}"\
+                        .format(tn=t, nf=col['colName'], ft=col['colType'], p=col['modify'])
+                logging.debug('Statement is: \n\t' + s)
+                c.execute(s)
+
+        s = 'PRAGMA user_version = 2'
+        c.execute(s)
+        logging.info('Database version 2 upgrade is complete')
+
+        con.commit()
+    elif v > 1:
         logging.error('In V1 upgrade script, but db is already at/past V1')
         return
     # TODO if version 2 is out, then move on to that upgrade script 
@@ -658,21 +734,27 @@ def is_number(s):
 ### Converts u'strings' from json.loads() to python native byte strings
 ### http://stackoverflow.com/questions/956867/how-to-get-string-objects-instead-of-unicode-ones-from-json-in-python
 def byteify(input):
-    if isinstance(input, dict):
-        return {byteify(key):byteify(value) for key,value in input.iteritems()}
-    elif isinstance(input, list):
-        return [byteify(element) for element in input]
-    elif isinstance(input, unicode):
-        return input.encode('utf-8')
-    else:
-        return input
+    return input
+    # if isinstance(input, dict):
+    #     return {byteify(key):byteify(value) for key,value in input.items()}
+    # elif isinstance(input, list):
+    #     return [byteify(element) for element in input]
+    # elif isinstance(input, str):
+    #     return input.encode('utf-8')
+    # else:
+    #     return input
 
 
 def wrapHttpResponse(res):
     logging.debug(res)
     try:
         s = res['success']
-    except TypeError, KeyError:
+    except TypeError:
+        return {
+            'success' : True,
+            'response': res
+        }
+    except KeyError:
         return {
             'success' : True,
             'response': res
@@ -1002,6 +1084,13 @@ v1AddCols = [{ # Columns to be added in V1
             'tableName' :  ['clips','grabs']
         }]
 
+### Columns to add on V2 db upgrade
+v2AddCols = [{ # Columns to be added in V1
+            'colName' : 'createdDate',
+            'colType' : TEXT,
+            'modify' : '',
+            'tableName' :  ['clips','grabs']
+        }]
 
 dataTables = [clipTable, grabTable]
 allTables = [clipTable, grabTable, accountTable]
@@ -1031,6 +1120,8 @@ if __name__ == "__main__":
     parser.add_argument('-u', '--user', dest='u', help='Designate xboxuserid(s) to get data for', action='append')
     parser.add_argument('-g', '--gamertag', dest='g', help='Designate gamertag(s) to get data for', action='append')
     parser.add_argument('-n', '--notify', dest='n', help='Notify of undownloaded clips/grabs', action='store_true')
+    parser.add_argument('-j', '--json', dest='j', help='Counts of gamer clips/grabs', action='store_true')
+    parser.add_argument('-t', '--test', dest='t', help='Just run the test path', action='store_true')
 
     parser.add_argument('-v', '--verbose', dest='verbosity', help='Increase verbosity (off/on/firehose)', action='count', default=0)
     args = parser.parse_args()
@@ -1047,7 +1138,16 @@ if __name__ == "__main__":
 
     logging.debug(str(args))
 
+
     checkDatabase(allTables)
+
+    ### Initialize Notifications
+    notifySlack = apprise.Apprise()
+    notifySlack.add(appriseSlackUrl)
+    
+    if args.t:
+        logging.debug('Test Path Enabled')
+        exit()
 
     if args.c:
         ### GamerTags
@@ -1060,7 +1160,7 @@ if __name__ == "__main__":
                     print(a['gamertag'])
                     addAccountDetails([a])
                     getData(a['xuid'])
-                    checkForMissingData(dataTables, False, a, args.n)
+                    checkForMissingData(dataTables, False, a, notif=args.n)
 
         ### XboxUserIds
         if args.u is not None and len(args.u) > 0:
@@ -1074,9 +1174,15 @@ if __name__ == "__main__":
 
     if args.dl:
         if args.dlm is not None:
-            checkForMissingData(dataTables, True, False, args.n, args.dlm)
+            checkForMissingData(dataTables, True, False, notif=args.n, maxNum=args.dlm)
         else:
-            checkForMissingData(dataTables, True, False, args.n)
+            checkForMissingData(dataTables, True, False, notif=args.n)
+
+    if args.j:
+        getCountsAsJson()
+
+    if args.n:
+        doNotifySlackWithNew(notifySlack)
 
     ### Reset working directory to original ###
     os.chdir(cwd)
